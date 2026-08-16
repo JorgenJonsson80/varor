@@ -2,7 +2,11 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import './SignIn.css'
 
-export function SignIn() {
+interface Props {
+  deniedEmail?: string | null
+}
+
+export function SignIn({ deniedEmail }: Props) {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -27,6 +31,12 @@ export function SignIn() {
     <div className="signin-page">
       <form onSubmit={handleSubmit} className="signin-form">
         <h1>Varuplacering</h1>
+        {deniedEmail && (
+          <p className="error">
+            {deniedEmail} har inte behörighet till Varuplacering. Kontakta en administratör om du borde ha
+            det.
+          </p>
+        )}
         {status === 'sent' ? (
           <p>Kolla din mejl ({email}) för inloggningslänken.</p>
         ) : (

@@ -1,0 +1,12 @@
+-- Makes vp_is_allowed_user() callable from the client as an RPC
+-- (supabase.rpc('vp_is_allowed_user')) so the app can check authorization
+-- immediately after login and sign the user back out if they're not on
+-- the allowlist — instead of leaving them logged into an empty, erroring
+-- shell. This matters specifically for accounts that predate this app:
+-- the signup-block trigger only stops brand-new auth.users rows, so
+-- anyone who already has an account from another app sharing this same
+-- Supabase project (e.g. Shelving Live) sails right past it.
+--
+-- Postgres grants EXECUTE to PUBLIC by default for new functions, so this
+-- is almost certainly already callable — this just makes it explicit.
+grant execute on function vp_is_allowed_user() to authenticated;

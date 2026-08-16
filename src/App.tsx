@@ -4,14 +4,18 @@ import { PlatskartaAdmin } from './components/Platskarta/PlatskartaAdmin'
 import './App.css'
 
 function App() {
-  const { session, loading, signOut } = useAuth()
+  const { session, loading, authorized, deniedEmail, signOut } = useAuth()
 
   if (loading) {
     return <div className="app-loading">Laddar…</div>
   }
 
-  if (!session) {
-    return <SignIn />
+  if (!session || authorized === false) {
+    return <SignIn deniedEmail={authorized === false ? deniedEmail : null} />
+  }
+
+  if (authorized === null) {
+    return <div className="app-loading">Kontrollerar behörighet…</div>
   }
 
   return (
