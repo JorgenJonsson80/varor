@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { buildSeriesFromWide, groupLongFormat, guessMonthColumns, parseMonthColumn, toNumber } from '../history'
+import {
+  buildSeriesFromWide,
+  groupLongFormat,
+  guessMonthColumns,
+  normalizeLongRows,
+  normalizeMonthLabel,
+  normalizeWideRows,
+  parseMonthColumn,
+  toNumber,
+} from '../history'
 
 describe('toNumber', () => {
   it('coerces plain numbers and numeric strings', () => {
@@ -80,5 +89,60 @@ describe('guessMonthColumns', () => {
   it('works across a year boundary', () => {
     const columns = ['2023-11', '2024-01', '2023-12']
     expect(guessMonthColumns(columns)).toEqual(['2023-11', '2023-12', '2024-01'])
+  })
+})
+
+describe('normalizeMonthLabel', () => {
+  it('canonicalizes a recognized month header to YYYY-MM', () => {
+    expect(normalizeMonthLabel('jan-24')).toBe('2024-01')
+    expect(normalizeMonthLabel('december 2023')).toBe('2023-12')
+  })
+
+  it('passes through an unrecognized header unchanged', () => {
+    expect(normalizeMonthLabel('Artikelnummer')).toBe('Artikelnummer')
+  })
+})
+
+describe('normalizeWideRows', () => {
+  it('expands each vara+plats row into one row per month, with canonical period labels', () => {
+    const rows = [{ vara: 'A1', plats: 'P1010-05--A-2-', 'jan-24': '10', 'feb-24': '20' }]
+    const result = normalizeWideRows(rows, 'vara', 'plats', ['jan-24', 'feb-24'])
+    expect(result).toEqual([
+      { itemId: 'A1', plats: 'P1010-05--A-2-', period: '2024-01', volume: 10 },
+      { itemId: 'A1', plats: 'P1010-05--A-2-', period: '2024-02', volume: 20 },
+    ])
+  })
+
+  it('drops rows missing an item id or location', () => {
+    const rows = [
+      { vara: '', plats: 'P1', 'jan-24': '10' },
+      { vara: 'A1', plats: '', 'jan-24': '10' },
+      { vara: 'A2', plats: 'P1', 'jan-24': '10' },
+    ]
+    const result = normalizeWideRows(rows, 'vara', 'plats', ['jan-24'])
+    expect(result).toEqual([{ itemId: 'A2', plats: 'P1', period: '2024-01', volume: 10 }])
+  })
+})
+
+describe('normalizeLongRows', () => {
+  it('maps vara+plats+period+antal rows straight through', () => {
+    const rows = [
+      { vara: 'A1', plats: 'P1', period: '2024-01', antal: '5' },
+      { vara: 'A1', plats: 'P1', period: '2024-02', antal: '7' },
+    ]
+    const result = normalizeLongRows(rows, 'vara', 'plats', 'period', 'antal')
+    expect(result).toEqual([
+      { itemId: 'A1', plats: 'P1', period: '2024-01', volume: 5 },
+      { itemId: 'A1', plats: 'P1', period: '2024-02', volume: 7 },
+    ])
+  })
+
+  it('drops rows missing an item id, location, or period', () => {
+    const rows = [
+      { vara: 'A1', plats: 'P1', period: '', antal: '5' },
+      { vara: 'A1', plats: 'P1', period: '2024-01', antal: '5' },
+    ]
+    const result = normalizeLongRows(rows, 'vara', 'plats', 'period', 'antal')
+    expect(result).toEqual([{ itemId: 'A1', plats: 'P1', period: '2024-01', volume: 5 }])
   })
 })

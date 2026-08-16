@@ -18,6 +18,27 @@
   margin: 0;
 }
 
+.app-nav {
+  display: flex;
+  gap: 0.5rem;
+  flex: 1;
+  margin-left: 2rem;
+}
+
+.app-nav button {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--border, #e5e4e7);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.app-nav button.active {
+  background: var(--accent, #aa3bff);
+  border-color: var(--accent, #aa3bff);
+  color: white;
+}
+
 .app-header-user {
   display: flex;
   align-items: center;

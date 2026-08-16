@@ -1,10 +1,15 @@
+import { useState } from 'react'
 import { useAuth } from './hooks/useAuth'
 import { SignIn } from './components/Auth/SignIn'
 import { PlatskartaAdmin } from './components/Platskarta/PlatskartaAdmin'
+import { ResultatView } from './components/Resultat/ResultatView'
 import './App.css'
+
+type View = 'resultat' | 'platskarta'
 
 function App() {
   const { session, loading, authorized, deniedEmail, signOut } = useAuth()
+  const [view, setView] = useState<View>('resultat')
 
   if (loading) {
     return <div className="app-loading">Laddar…</div>
@@ -22,6 +27,18 @@ function App() {
     <div className="app-shell">
       <header className="app-header">
         <h1>Varuplacering</h1>
+        <nav className="app-nav">
+          <button type="button" className={view === 'resultat' ? 'active' : ''} onClick={() => setView('resultat')}>
+            Resultat
+          </button>
+          <button
+            type="button"
+            className={view === 'platskarta' ? 'active' : ''}
+            onClick={() => setView('platskarta')}
+          >
+            Platskarta
+          </button>
+        </nav>
         <div className="app-header-user">
           <span>{session.user.email}</span>
           <button type="button" onClick={() => signOut()}>
@@ -29,9 +46,7 @@ function App() {
           </button>
         </div>
       </header>
-      <main>
-        <PlatskartaAdmin userId={session.user.id} />
-      </main>
+      <main>{view === 'resultat' ? <ResultatView /> : <PlatskartaAdmin userId={session.user.id} />}</main>
     </div>
   )
 }

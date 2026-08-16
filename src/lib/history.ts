@@ -113,3 +113,61 @@ export function guessMonthColumns(columnNames: string[]): string[] {
   parsed.sort((a, b) => a.parsed.year - b.parsed.year || a.parsed.month - b.parsed.month)
   return parsed.map((entry) => entry.name)
 }
+
+/** Canonicalizes a recognized month column header to sortable 'YYYY-MM'; passes through unrecognized headers as-is. */
+export function normalizeMonthLabel(column: string): string {
+  const parsed = parseMonthColumn(column)
+  if (!parsed) return column
+  return `${parsed.year}-${String(parsed.month).padStart(2, '0')}`
+}
+
+export interface PlockstatistikRow {
+  itemId: string
+  plats: string
+  period: string
+  volume: number
+}
+
+/**
+ * Plockstatistik rows carry vara+plats per the source file (an item's
+ * current location comes bundled with its pick volume, not from a separate
+ * register). Wide format: one row per vara+plats, one column per month.
+ * Rows missing an item id or location are dropped rather than imported
+ * with a blank key.
+ */
+export function normalizeWideRows(
+  rows: Record<string, unknown>[],
+  itemColumn: string,
+  platsColumn: string,
+  monthColumns: string[],
+): PlockstatistikRow[] {
+  const result: PlockstatistikRow[] = []
+  for (const row of rows) {
+    const itemId = String(row[itemColumn] ?? '').trim()
+    const plats = String(row[platsColumn] ?? '').trim()
+    if (!itemId || !plats) continue
+    for (const column of monthColumns) {
+      result.push({ itemId, plats, period: normalizeMonthLabel(column), volume: toNumber(row[column]) })
+    }
+  }
+  return result
+}
+
+/** Long format: one row per vara+plats+period, with a separate value column. */
+export function normalizeLongRows(
+  rows: Record<string, unknown>[],
+  itemColumn: string,
+  platsColumn: string,
+  periodColumn: string,
+  volumeColumn: string,
+): PlockstatistikRow[] {
+  const result: PlockstatistikRow[] = []
+  for (const row of rows) {
+    const itemId = String(row[itemColumn] ?? '').trim()
+    const plats = String(row[platsColumn] ?? '').trim()
+    const period = String(row[periodColumn] ?? '').trim()
+    if (!itemId || !plats || !period) continue
+    result.push({ itemId, plats, period, volume: toNumber(row[volumeColumn]) })
+  }
+  return result
+}
