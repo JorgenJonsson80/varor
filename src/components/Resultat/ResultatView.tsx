@@ -8,6 +8,7 @@ import type { Klass } from '../../lib/types'
 import type { SignalType } from '../../lib/signals'
 import { ImportPlockstatistik } from '../Plockstatistik/ImportPlockstatistik'
 import { Sparkline } from './Sparkline'
+import { SummaryPanel } from './SummaryPanel'
 import './Resultat.css'
 
 const SIGNAL_LABELS: Record<SignalType, string> = {
@@ -31,7 +32,15 @@ export function ResultatView() {
 
   const [signalFilter, setSignalFilter] = useState<'avvikelser' | 'alla'>('avvikelser')
   const [textFilter, setTextFilter] = useState('')
+  const [klassFilter, setKlassFilter] = useState<{ varuklass: Klass; platsklass: Klass } | null>(null)
   const [page, setPage] = useState(0)
+
+  function handleSelectKlassCell(varuklass: Klass, platsklass: Klass) {
+    setKlassFilter((prev) =>
+      prev?.varuklass === varuklass && prev?.platsklass === platsklass ? null : { varuklass, platsklass },
+    )
+    setPage(0)
+  }
 
   const loading = configLoading || rulesLoading || locationsLoading || historyLoading
 
@@ -77,11 +86,15 @@ export function ResultatView() {
   const filteredRows = useMemo(() => {
     const needle = textFilter.trim().toLowerCase()
     return allRows.filter((row) => {
-      if (signalFilter === 'avvikelser' && row.signal === 'OK') return false
+      if (klassFilter) {
+        if (row.varuklass !== klassFilter.varuklass || row.platsklass !== klassFilter.platsklass) return false
+      } else if (signalFilter === 'avvikelser' && row.signal === 'OK') {
+        return false
+      }
       if (needle === '') return true
       return row.id.toLowerCase().includes(needle) || row.plats.toLowerCase().includes(needle)
     })
-  }, [allRows, signalFilter, textFilter])
+  }, [allRows, signalFilter, textFilter, klassFilter])
 
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
   const pageRows = filteredRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
@@ -97,9 +110,12 @@ export function ResultatView() {
         <p className="hint">Ingen plockstatistik importerad ännu — börja med importen ovan.</p>
       ) : (
         <>
+          <SummaryPanel rows={allRows} activeKlassFilter={klassFilter} onSelectKlassCell={handleSelectKlassCell} />
+
           <div className="resultat-controls">
             <select
               value={signalFilter}
+              disabled={klassFilter !== null}
               onChange={(e) => {
                 setSignalFilter(e.target.value as 'avvikelser' | 'alla')
                 setPage(0)
@@ -117,6 +133,14 @@ export function ResultatView() {
                 setPage(0)
               }}
             />
+            {klassFilter && (
+              <span className="klass-filter-badge">
+                Varuklass {klassFilter.varuklass} × platsklass {klassFilter.platsklass}
+                <button type="button" onClick={() => setKlassFilter(null)}>
+                  Rensa
+                </button>
+              </span>
+            )}
             <span>{filteredRows.length} rader</span>
           </div>
 
