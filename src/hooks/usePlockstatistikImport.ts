@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import type { PlockstatistikRow } from '../lib/history'
 
-const CHUNK_SIZE = 2000
+const CHUNK_SIZE = 1000
 const CONCURRENCY = 6
 
 /**

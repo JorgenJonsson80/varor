@@ -1,31 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { fetchAllRows } from '../lib/supabasePagination'
 import type { Klass } from '../lib/types'
 
 export interface LocationRow {
   plats: string
   manual_klass: Klass | null
   manual_updated_at: string | null
-}
-
-const PAGE_SIZE = 1000
-
-/** PostgREST caps a single request at 1000 rows by default — page through until a short page ends it. */
-async function fetchAllLocations(): Promise<LocationRow[]> {
-  const all: LocationRow[] = []
-  let from = 0
-  for (;;) {
-    const { data, error } = await supabase
-      .from('vp_locations')
-      .select('plats, manual_klass, manual_updated_at')
-      .order('plats', { ascending: true })
-      .range(from, from + PAGE_SIZE - 1)
-    if (error) throw new Error(error.message)
-    all.push(...data)
-    if (data.length < PAGE_SIZE) break
-    from += PAGE_SIZE
-  }
-  return all
 }
 
 export function useLocations() {
@@ -36,7 +17,12 @@ export function useLocations() {
   const reload = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await fetchAllLocations()
+      const data = await fetchAllRows<LocationRow>(
+        supabase,
+        'vp_locations',
+        'plats, manual_klass, manual_updated_at',
+        ['plats'],
+      )
       setLocations(data)
       setError(null)
     } catch (e) {
