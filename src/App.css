@@ -39,6 +39,10 @@
   color: white;
 }
 
+.view-hidden {
+  display: none;
+}
+
 .app-header-user {
   display: flex;
   align-items: center;

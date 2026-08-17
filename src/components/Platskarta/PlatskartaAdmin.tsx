@@ -2,9 +2,7 @@ import { useMemo, useState } from 'react'
 import { determinePlatsklass, getStation } from '../../lib/location'
 import type { Klass } from '../../lib/types'
 import { buildPlatskartaExport, parsePlatskartaExport } from '../../lib/platskartaExport'
-import { useLocationConfig } from '../../hooks/useLocationConfig'
-import { usePlatsklassRules } from '../../hooks/usePlatsklassRules'
-import { useLocations } from '../../hooks/useLocations'
+import { useAppData } from '../../context/AppDataContext'
 import { RuleEditor } from './RuleEditor'
 import { ImportLocations } from './ImportLocations'
 import './Platskarta.css'
@@ -14,9 +12,9 @@ interface Props {
 }
 
 export function PlatskartaAdmin({ userId }: Props) {
-  const { config, loading: configLoading, update: updateConfig } = useLocationConfig()
-  const { rules, loading: rulesLoading, addRule, updateRule, deleteRule, reorder, replaceAll } =
-    usePlatsklassRules()
+  const { configData, rulesData, locationsData } = useAppData()
+  const { config, loading: configLoading, update: updateConfig } = configData
+  const { rules, loading: rulesLoading, addRule, updateRule, deleteRule, reorder, replaceAll } = rulesData
   const {
     locations,
     loading: locationsLoading,
@@ -24,7 +22,7 @@ export function PlatskartaAdmin({ userId }: Props) {
     setManualKlass,
     clearManualKlass,
     importLocations,
-  } = useLocations()
+  } = locationsData
 
   const [activeStation, setActiveStation] = useState<string | null>(null)
   const [filterText, setFilterText] = useState('')

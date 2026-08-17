@@ -1,7 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useLocationConfig } from '../../hooks/useLocationConfig'
-import { usePlatsklassRules } from '../../hooks/usePlatsklassRules'
-import { useLocations } from '../../hooks/useLocations'
+import { useAppData } from '../../context/AppDataContext'
 import { useItemHistory } from '../../hooks/useItemHistory'
 import { buildResultRows, groupRawVolumeRows, type ResultRow } from '../../lib/results'
 import type { Klass } from '../../lib/types'
@@ -25,9 +23,10 @@ const SIGNAL_LABELS: Record<SignalType, string> = {
 const PAGE_SIZE = 100
 
 export function ResultatView() {
-  const { config, loading: configLoading } = useLocationConfig()
-  const { rules, loading: rulesLoading } = usePlatsklassRules()
-  const { locations, loading: locationsLoading } = useLocations()
+  const { configData, rulesData, locationsData } = useAppData()
+  const { config, loading: configLoading } = configData
+  const { rules, loading: rulesLoading } = rulesData
+  const { locations, loading: locationsLoading } = locationsData
   const {
     rows: historyRows,
     loading: historyLoading,
