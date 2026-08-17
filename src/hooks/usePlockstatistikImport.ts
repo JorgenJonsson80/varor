@@ -3,19 +3,38 @@ import { supabase } from '../lib/supabaseClient'
 import type { PlockstatistikRow } from '../lib/history'
 
 const CHUNK_SIZE = 2000
+const CONCURRENCY = 6
 
+/**
+ * Upserts in parallel chunks rather than one at a time — a real import can
+ * mean hundreds of thousands of volume rows, and sending those 2000 at a
+ * time, sequentially, is a long serial chain of round-trips. Chunks are
+ * independent of each other within a single table, so a small worker pool
+ * is safe as long as the tables themselves are still upserted in order
+ * (items and locations before volumes, for the foreign keys).
+ */
 async function chunkedUpsert(
   table: string,
   rows: Record<string, unknown>[],
   options: { onConflict?: string; ignoreDuplicates?: boolean },
   onProgress?: (done: number, total: number) => void,
 ) {
-  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-    const chunk = rows.slice(i, i + CHUNK_SIZE)
-    const { error } = await supabase.from(table).upsert(chunk, options)
-    if (error) throw new Error(`${table}: ${error.message}`)
-    onProgress?.(Math.min(i + CHUNK_SIZE, rows.length), rows.length)
+  const chunkCount = Math.ceil(rows.length / CHUNK_SIZE)
+  let done = 0
+  let nextChunk = 0
+
+  async function worker() {
+    while (nextChunk < chunkCount) {
+      const i = nextChunk++
+      const chunk = rows.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
+      const { error } = await supabase.from(table).upsert(chunk, options)
+      if (error) throw new Error(`${table}: ${error.message}`)
+      done += chunk.length
+      onProgress?.(done, rows.length)
+    }
   }
+
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunkCount) }, () => worker()))
 }
 
 export interface ImportProgress {

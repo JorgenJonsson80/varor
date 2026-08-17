@@ -28,7 +28,13 @@ export function ResultatView() {
   const { config, loading: configLoading } = useLocationConfig()
   const { rules, loading: rulesLoading } = usePlatsklassRules()
   const { locations, loading: locationsLoading } = useLocations()
-  const { rows: historyRows, loading: historyLoading, error: historyError, reload } = useItemHistory()
+  const {
+    rows: historyRows,
+    loading: historyLoading,
+    error: historyError,
+    progress: historyProgress,
+    reload,
+  } = useItemHistory()
 
   const [signalFilter, setSignalFilter] = useState<'avvikelser' | 'alla'>('avvikelser')
   const [textFilter, setTextFilter] = useState('')
@@ -99,7 +105,14 @@ export function ResultatView() {
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
   const pageRows = filteredRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
-  if (loading) return <p>Laddar resultat…</p>
+  if (loading) {
+    return (
+      <p>
+        Laddar resultat…
+        {historyProgress && ` (${historyProgress.loaded} / ${historyProgress.total} rader)`}
+      </p>
+    )
+  }
   if (historyError) return <p className="error">Kunde inte läsa plockstatistik: {historyError}</p>
 
   return (
