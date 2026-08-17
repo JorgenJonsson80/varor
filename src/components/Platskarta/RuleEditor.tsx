@@ -17,19 +17,33 @@ function parseValues(raw: string): string[] {
     .filter((v) => v !== '')
 }
 
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
+
 export function RuleEditor({ rules, onAdd, onUpdate, onDelete, onReorder }: Props) {
   const [newPosition, setNewPosition] = useState('2')
   const [newValues, setNewValues] = useState('')
   const [newKlass, setNewKlass] = useState<Klass>('C')
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function handleAdd() {
     const values = parseValues(newValues)
-    if (values.length === 0) return
+    const position = Number(newPosition)
+    if (values.length === 0 || !Number.isFinite(position) || position < 1) return
     setBusy(true)
+    setError(null)
     try {
-      await onAdd({ sort_order: rules.length, position: Number(newPosition), values, klass: newKlass })
+      // Never reuse rules.length as sort_order — it undercounts once any
+      // rule has ever been deleted, leaving a gap, and collides with an
+      // existing row's sort_order (unique). That collision was failing
+      // silently: the insert error had nowhere to surface.
+      const nextSortOrder = rules.length === 0 ? 0 : Math.max(...rules.map((r) => r.sort_order)) + 1
+      await onAdd({ sort_order: nextSortOrder, position, values, klass: newKlass })
       setNewValues('')
+    } catch (e) {
+      setError(errorMessage(e))
     } finally {
       setBusy(false)
     }
@@ -42,8 +56,32 @@ export function RuleEditor({ rules, onAdd, onUpdate, onDelete, onReorder }: Prop
     const [moved] = ids.splice(index, 1)
     ids.splice(target, 0, moved)
     setBusy(true)
+    setError(null)
     try {
       await onReorder(ids)
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleUpdate(id: string, patch: Partial<{ position: number; values: string[]; klass: Klass }>) {
+    setError(null)
+    try {
+      await onUpdate(id, patch)
+    } catch (e) {
+      setError(errorMessage(e))
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      await onDelete(id)
+    } catch (e) {
+      setError(errorMessage(e))
     } finally {
       setBusy(false)
     }
@@ -56,6 +94,7 @@ export function RuleEditor({ rules, onAdd, onUpdate, onDelete, onReorder }: Prop
         Körs uppifrån och ner, första träffen vinner. Position räknas bakifrån från lagerplatsens slut (1 = sista
         tecknet).
       </p>
+      {error && <p className="error">{error}</p>}
 
       <table className="rule-table">
         <thead>
@@ -76,21 +115,18 @@ export function RuleEditor({ rules, onAdd, onUpdate, onDelete, onReorder }: Prop
                   type="number"
                   min={1}
                   value={rule.position}
-                  onChange={(e) => onUpdate(rule.id, { position: Number(e.target.value) })}
+                  onChange={(e) => handleUpdate(rule.id, { position: Number(e.target.value) })}
                 />
               </td>
               <td>
                 <input
                   type="text"
                   value={rule.values.join(', ')}
-                  onChange={(e) => onUpdate(rule.id, { values: parseValues(e.target.value) })}
+                  onChange={(e) => handleUpdate(rule.id, { values: parseValues(e.target.value) })}
                 />
               </td>
               <td>
-                <select
-                  value={rule.klass}
-                  onChange={(e) => onUpdate(rule.id, { klass: e.target.value as Klass })}
-                >
+                <select value={rule.klass} onChange={(e) => handleUpdate(rule.id, { klass: e.target.value as Klass })}>
                   <option value="A">A</option>
                   <option value="B">B</option>
                   <option value="C">C</option>
@@ -103,7 +139,7 @@ export function RuleEditor({ rules, onAdd, onUpdate, onDelete, onReorder }: Prop
                 <button type="button" disabled={busy || index === rules.length - 1} onClick={() => move(index, 1)}>
                   ↓
                 </button>
-                <button type="button" disabled={busy} onClick={() => onDelete(rule.id)}>
+                <button type="button" disabled={busy} onClick={() => handleDelete(rule.id)}>
                   Ta bort
                 </button>
               </td>

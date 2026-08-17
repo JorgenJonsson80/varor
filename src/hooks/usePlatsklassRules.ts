@@ -60,16 +60,34 @@ export function usePlatsklassRules() {
     [reload],
   )
 
-  /** Reassigns sort_order sequentially to match the given id order (drag/up-down reordering). */
+  /**
+   * Reassigns sort_order sequentially to match the given id order
+   * (drag/up-down reordering). sort_order is unique, so a direct swap
+   * (e.g. rule 2 <-> rule 3) can't be done in one pass: each row's target
+   * value is another row's current value, so setting either one first
+   * collides immediately, regardless of whether the updates run
+   * sequentially or in parallel. Two passes dodge it — first shift
+   * everything to a disjoint negative range, then to the final values,
+   * so nothing can ever collide with a value still in use.
+   */
   const reorder = useCallback(
     async (orderedIds: string[]) => {
-      const results = await Promise.all(
+      const tempResults = await Promise.all(
+        orderedIds.map((id, index) =>
+          supabase.from('vp_platsklass_rules').update({ sort_order: -(index + 1) }).eq('id', id),
+        ),
+      )
+      const tempFailed = tempResults.find((r) => r.error)
+      if (tempFailed?.error) throw new Error(tempFailed.error.message)
+
+      const finalResults = await Promise.all(
         orderedIds.map((id, index) =>
           supabase.from('vp_platsklass_rules').update({ sort_order: index }).eq('id', id),
         ),
       )
-      const failed = results.find((r) => r.error)
-      if (failed?.error) throw new Error(failed.error.message)
+      const finalFailed = finalResults.find((r) => r.error)
+      if (finalFailed?.error) throw new Error(finalFailed.error.message)
+
       await reload()
     },
     [reload],
