@@ -37,7 +37,7 @@ export function useLocations() {
   }, [reload])
 
   const setManualKlass = useCallback(
-    async (platser: string[], klass: Klass, userId: string | undefined) => {
+    async (platser: string[], klass: Klass, userId: string | undefined, options?: { skipReload?: boolean }) => {
       const { error } = await supabase
         .from('vp_locations')
         .update({
@@ -47,19 +47,19 @@ export function useLocations() {
         })
         .in('plats', platser)
       if (error) throw new Error(error.message)
-      await reload()
+      if (!options?.skipReload) await reload()
     },
     [reload],
   )
 
   const clearManualKlass = useCallback(
-    async (platser: string[]) => {
+    async (platser: string[], options?: { skipReload?: boolean }) => {
       const { error } = await supabase
         .from('vp_locations')
         .update({ manual_klass: null, manual_updated_at: null, manual_updated_by: null })
         .in('plats', platser)
       if (error) throw new Error(error.message)
-      await reload()
+      if (!options?.skipReload) await reload()
     },
     [reload],
   )

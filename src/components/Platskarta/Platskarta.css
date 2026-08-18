@@ -141,6 +141,28 @@
   font-size: 0.9rem;
 }
 
+.pending-changes-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.35rem;
+  background: var(--accent-bg, rgba(170, 59, 255, 0.12));
+  font-size: 0.9rem;
+}
+
+.pending-changes-bar button {
+  padding: 0.3rem 0.75rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--accent, #aa3bff);
+  background: transparent;
+  cursor: pointer;
+}
+
+.pending-row {
+  background: var(--accent-bg, rgba(170, 59, 255, 0.08));
+}
+
 .klass {
   font-weight: 700;
   text-align: center;

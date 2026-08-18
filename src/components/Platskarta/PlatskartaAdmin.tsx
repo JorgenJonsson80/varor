@@ -28,6 +28,10 @@ export function PlatskartaAdmin({ userId }: Props) {
   const [filterText, setFilterText] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  // Staged-but-unsaved manual klass edits: null means "clear on save".
+  // Lets someone go through several locations, then commit them together
+  // instead of a round-trip + full reload after every single click.
+  const [pendingChanges, setPendingChanges] = useState<Map<string, Klass | null>>(new Map())
 
   const stationStart = config?.station_start ?? 4
   const stationEnd = config?.station_end ?? 5
@@ -47,14 +51,25 @@ export function PlatskartaAdmin({ userId }: Props) {
     return map
   }, [locations])
 
+  // Overlays staged edits on top of the saved manual tags, purely for
+  // preview — nothing here is written to the database until "Spara".
+  const previewManualMap = useMemo(() => {
+    const map = { ...manualMap }
+    for (const [plats, klass] of pendingChanges) {
+      if (klass === null) delete map[plats]
+      else map[plats] = klass
+    }
+    return map
+  }, [manualMap, pendingChanges])
+
   const plainRules = useMemo(
     () => rules.map((r) => ({ position: r.position, values: r.values, klass: r.klass })),
     [rules],
   )
 
   const platsklassConfig = useMemo(
-    () => ({ manual: manualMap, rules: plainRules, baseKlass, stationStart, stationEnd }),
-    [manualMap, plainRules, baseKlass, stationStart, stationEnd],
+    () => ({ manual: previewManualMap, rules: plainRules, baseKlass, stationStart, stationEnd }),
+    [previewManualMap, plainRules, baseKlass, stationStart, stationEnd],
   )
 
   const filtered = useMemo(() => {
@@ -65,28 +80,59 @@ export function PlatskartaAdmin({ userId }: Props) {
       .filter((loc) => (needle === '' ? true : loc.plats.toLowerCase().includes(needle)))
   }, [locations, currentStation, filterText, stationStart, stationEnd])
 
-  async function handleBulkSet(klass: Klass) {
+  function stageSet(platser: string[], klass: Klass) {
+    setPendingChanges((prev) => {
+      const next = new Map(prev)
+      for (const plats of platser) next.set(plats, klass)
+      return next
+    })
+  }
+
+  // Clicking "Rensa" on a row that only has a staged (unsaved) change just
+  // cancels that staged change. Only a location with an actually-saved
+  // manual tag needs an explicit staged "clear" sent on save.
+  function stageClear(platser: string[]) {
+    const savedManual = new Map(locations.map((l) => [l.plats, l.manual_klass]))
+    setPendingChanges((prev) => {
+      const next = new Map(prev)
+      for (const plats of platser) {
+        if (next.has(plats)) next.delete(plats)
+        else if (savedManual.get(plats)) next.set(plats, null)
+      }
+      return next
+    })
+  }
+
+  async function handleSaveChanges() {
     setBusy(true)
+    setMessage(null)
+    const count = pendingChanges.size
     try {
-      await setManualKlass(
-        filtered.map((l) => l.plats),
-        klass,
-        userId,
-      )
-      setMessage(`${filtered.length} platser satta till ${klass}.`)
+      const byKlass = new Map<Klass, string[]>()
+      const toClear: string[] = []
+      for (const [plats, klass] of pendingChanges) {
+        if (klass === null) toClear.push(plats)
+        else byKlass.set(klass, [...(byKlass.get(klass) ?? []), plats])
+      }
+      for (const [klass, platser] of byKlass) {
+        await setManualKlass(platser, klass, userId, { skipReload: true })
+      }
+      if (toClear.length > 0) {
+        await clearManualKlass(toClear, { skipReload: true })
+      }
+      await locationsData.reload()
+      setPendingChanges(new Map())
+      setMessage(`${count} ändringar sparade.`)
+    } catch (e) {
+      setMessage(`Kunde inte spara: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setBusy(false)
     }
   }
 
-  async function handleBulkClear() {
-    setBusy(true)
-    try {
-      await clearManualKlass(filtered.map((l) => l.plats))
-      setMessage(`Manuell tagg rensad för ${filtered.length} platser.`)
-    } finally {
-      setBusy(false)
-    }
+  function handleDiscardChanges() {
+    setPendingChanges(new Map())
+    setMessage(null)
   }
 
   function handleExport() {
@@ -201,20 +247,48 @@ export function PlatskartaAdmin({ userId }: Props) {
           </div>
 
           <div className="platskarta-bulk">
-            <span>Sätt alla {filtered.length} träffar till:</span>
-            <button type="button" disabled={busy || filtered.length === 0} onClick={() => handleBulkSet('A')}>
+            <span>Markera alla {filtered.length} träffar som:</span>
+            <button
+              type="button"
+              disabled={filtered.length === 0}
+              onClick={() => stageSet(filtered.map((l) => l.plats), 'A')}
+            >
               A
             </button>
-            <button type="button" disabled={busy || filtered.length === 0} onClick={() => handleBulkSet('B')}>
+            <button
+              type="button"
+              disabled={filtered.length === 0}
+              onClick={() => stageSet(filtered.map((l) => l.plats), 'B')}
+            >
               B
             </button>
-            <button type="button" disabled={busy || filtered.length === 0} onClick={() => handleBulkSet('C')}>
+            <button
+              type="button"
+              disabled={filtered.length === 0}
+              onClick={() => stageSet(filtered.map((l) => l.plats), 'C')}
+            >
               C
             </button>
-            <button type="button" disabled={busy || filtered.length === 0} onClick={handleBulkClear}>
+            <button
+              type="button"
+              disabled={filtered.length === 0}
+              onClick={() => stageClear(filtered.map((l) => l.plats))}
+            >
               Rensa manuellt
             </button>
           </div>
+
+          {pendingChanges.size > 0 && (
+            <div className="pending-changes-bar">
+              <span>{pendingChanges.size} ändringar väntar på att sparas</span>
+              <button type="button" disabled={busy} onClick={handleSaveChanges}>
+                Spara ändringar
+              </button>
+              <button type="button" disabled={busy} onClick={handleDiscardChanges}>
+                Ångra
+              </button>
+            </div>
+          )}
 
           <table className="platskarta-table">
             <thead>
@@ -228,27 +302,29 @@ export function PlatskartaAdmin({ userId }: Props) {
             <tbody>
               {filtered.map((loc) => {
                 const result = determinePlatsklass(loc.plats, platsklassConfig)
+                const isPending = pendingChanges.has(loc.plats)
+                const showRensa = isPending || loc.manual_klass !== null
                 return (
-                  <tr key={loc.plats}>
+                  <tr key={loc.plats} className={isPending ? 'pending-row' : ''}>
                     <td>{loc.plats}</td>
                     <td className={`klass klass-${result.klass}`}>{result.klass}</td>
                     <td>
-                      {result.source === 'manual' && 'Manuell'}
+                      {result.source === 'manual' && (isPending ? 'Manuell (ej sparad)' : 'Manuell')}
                       {result.source === 'rule' && `Regel ${(result.ruleIndex ?? 0) + 1}`}
                       {result.source === 'base' && 'Grundklass'}
                     </td>
                     <td className="row-actions">
-                      <button type="button" onClick={() => setManualKlass([loc.plats], 'A', userId)}>
+                      <button type="button" onClick={() => stageSet([loc.plats], 'A')}>
                         A
                       </button>
-                      <button type="button" onClick={() => setManualKlass([loc.plats], 'B', userId)}>
+                      <button type="button" onClick={() => stageSet([loc.plats], 'B')}>
                         B
                       </button>
-                      <button type="button" onClick={() => setManualKlass([loc.plats], 'C', userId)}>
+                      <button type="button" onClick={() => stageSet([loc.plats], 'C')}>
                         C
                       </button>
-                      {result.source === 'manual' && (
-                        <button type="button" onClick={() => clearManualKlass([loc.plats])}>
+                      {showRensa && (
+                        <button type="button" onClick={() => stageClear([loc.plats])}>
                           Rensa
                         </button>
                       )}
