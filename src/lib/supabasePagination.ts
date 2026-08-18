@@ -1,32 +1,53 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 const PAGE_SIZE = 1000
-const CONCURRENCY = 6
+
+export function quoteFilterValue(value: string): string {
+  return `"${value.replace(/"/g, '\\"')}"`
+}
 
 /**
- * Fetches every row of a table/select in parallel batches of a fixed,
- * known-safe page size — without ever asking for an exact row count.
+ * Builds a PostgREST `.or()` filter string expressing "the row after this
+ * cursor" in the given column order — e.g. for orderBy [item_id, period]
+ * and cursor [i, p]:
+ *   item_id.gt."i",and(item_id.eq."i",period.gt."p")
+ * which is the standard keyset-pagination "next row" condition for a
+ * composite sort key.
+ */
+export function buildKeysetFilter(orderBy: string[], cursor: string[]): string {
+  const clauses: string[] = []
+  for (let i = 0; i < orderBy.length; i++) {
+    const eqParts = orderBy.slice(0, i).map((col, j) => `${col}.eq.${quoteFilterValue(cursor[j])}`)
+    const gtPart = `${orderBy[i]}.gt.${quoteFilterValue(cursor[i])}`
+    clauses.push(eqParts.length === 0 ? gtPart : `and(${[...eqParts, gtPart].join(',')})`)
+  }
+  return clauses.join(',')
+}
+
+/**
+ * Fetches every row of a table/select via keyset (cursor) pagination
+ * instead of OFFSET/range.
  *
- * An earlier version used `count: 'exact'` to size the pagination loop up
- * front. That works fine on small tables (locations), but on a
- * hundred-thousand-row table it's an expensive operation under RLS (the
- * same class of problem that caused an outright 500 earlier, when count
- * was combined with a range request) — and on this project it was
- * quietly coming back wrong/empty rather than erroring, which is worse:
- * no error to catch, just a table that looks unimported after a fresh
- * login even though the data is really there.
+ * Two earlier versions of this both broke on a real ~116k-row table:
+ * one used `count: 'exact'` to size an OFFSET-based loop and that count
+ * query itself was expensive/unreliable under RLS; the next dropped the
+ * count but kept OFFSET-based `.range()` paging, which outright hit a
+ * Postgres statement timeout — OFFSET pagination gets more expensive the
+ * deeper you go, because the database has to scan and sort through
+ * everything up to that offset just to discard it, and six of those
+ * running in parallel made it worse, not better.
  *
- * Instead: fetch CONCURRENCY pages at a time, and stop as soon as any
- * page in a batch comes back shorter than PAGE_SIZE — that's the
- * unambiguous end-of-table signal, no separate count query needed. A
- * request past the real end of the table just returns an empty page
- * (not an error), so slightly overshooting the last batch is harmless.
+ * Keyset pagination doesn't have that problem: each page asks for "the
+ * next N rows after this specific row", which a B-tree index can satisfy
+ * directly regardless of how deep into the table it is — cost stays flat
+ * page over page instead of growing with depth. The tradeoff is that it
+ * has to run sequentially (each page's cursor depends on the previous
+ * page's last row), so this trades the earlier (broken) parallelism for
+ * pages that are actually fast and don't time out.
  *
  * `orderBy` must uniquely (or near-uniquely, tie-broken deterministically
- * by the table's natural order) determine row order — `.range()` without
- * a stable ORDER BY doesn't guarantee the same row isn't returned twice,
- * or skipped, across separate page requests, and that risk is larger once
- * pages are fetched concurrently rather than one after another.
+ * by the table's natural order) determine row order — without that, the
+ * "greater than the last row" condition doesn't reliably advance.
  */
 export async function fetchAllRows<T>(
   supabase: SupabaseClient,
@@ -35,30 +56,24 @@ export async function fetchAllRows<T>(
   orderBy: string[],
   onProgress?: (loaded: number) => void,
 ): Promise<T[]> {
-  const allRows: T[] = []
-  let nextPage = 0
-  let reachedEnd = false
+  const allRows: Record<string, unknown>[] = []
+  let cursor: string[] | null = null
 
-  while (!reachedEnd) {
-    const pagesInBatch = Array.from({ length: CONCURRENCY }, (_, i) => nextPage + i)
-    nextPage += CONCURRENCY
+  for (;;) {
+    let query = supabase.from(table).select(columns)
+    for (const column of orderBy) query = query.order(column, { ascending: true })
+    if (cursor) query = query.or(buildKeysetFilter(orderBy, cursor))
+    const { data, error } = await query.limit(PAGE_SIZE)
+    if (error) throw new Error(error.message)
 
-    const batchResults = await Promise.all(
-      pagesInBatch.map(async (page) => {
-        let query = supabase.from(table).select(columns)
-        for (const column of orderBy) query = query.order(column, { ascending: true })
-        const from = page * PAGE_SIZE
-        const { data, error } = await query.range(from, from + PAGE_SIZE - 1)
-        if (error) throw new Error(error.message)
-        return data as T[]
-      }),
-    )
-
-    for (const pageRows of batchResults) allRows.push(...pageRows)
+    const page = data as unknown as Record<string, unknown>[]
+    allRows.push(...page)
     onProgress?.(allRows.length)
 
-    reachedEnd = batchResults.some((pageRows) => pageRows.length < PAGE_SIZE)
+    if (page.length < PAGE_SIZE) break
+    const last = page[page.length - 1]
+    cursor = orderBy.map((column) => String(last[column]))
   }
 
-  return allRows
+  return allRows as unknown as T[]
 }
