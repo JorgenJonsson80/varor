@@ -4,24 +4,28 @@ const PAGE_SIZE = 1000
 const CONCURRENCY = 6
 
 /**
- * Fetches every row of a table/select in parallel pages of a fixed,
- * known-safe size instead of one request at a time. Real tables here can
- * run into the tens or hundreds of thousands of rows, and a serial chain
- * of paginated requests turns into a long wait — this uses a small worker
- * pool (6 concurrent) instead.
+ * Fetches every row of a table/select in parallel batches of a fixed,
+ * known-safe page size — without ever asking for an exact row count.
  *
- * The row count comes from a separate `head: true` request that returns
- * no row data at all, just the count — deliberately NOT folded into a
- * larger single fetch. An earlier version tried to auto-discover the
- * server's max page size by requesting 5000 rows at once, which triggered
- * a 500 from PostgREST (this project enforces a lower per-request cap or
- * timeout than that). Sticking to the well-established 1000-row default
- * avoids the whole class of "just guess a bigger number" failure.
+ * An earlier version used `count: 'exact'` to size the pagination loop up
+ * front. That works fine on small tables (locations), but on a
+ * hundred-thousand-row table it's an expensive operation under RLS (the
+ * same class of problem that caused an outright 500 earlier, when count
+ * was combined with a range request) — and on this project it was
+ * quietly coming back wrong/empty rather than erroring, which is worse:
+ * no error to catch, just a table that looks unimported after a fresh
+ * login even though the data is really there.
+ *
+ * Instead: fetch CONCURRENCY pages at a time, and stop as soon as any
+ * page in a batch comes back shorter than PAGE_SIZE — that's the
+ * unambiguous end-of-table signal, no separate count query needed. A
+ * request past the real end of the table just returns an empty page
+ * (not an error), so slightly overshooting the last batch is harmless.
  *
  * `orderBy` must uniquely (or near-uniquely, tie-broken deterministically
- * by the table's natural order) determine row order — `.range()` without a
- * stable ORDER BY doesn't guarantee the same row isn't returned twice, or
- * skipped, across separate page requests, and that risk is larger once
+ * by the table's natural order) determine row order — `.range()` without
+ * a stable ORDER BY doesn't guarantee the same row isn't returned twice,
+ * or skipped, across separate page requests, and that risk is larger once
  * pages are fetched concurrently rather than one after another.
  */
 export async function fetchAllRows<T>(
@@ -29,35 +33,32 @@ export async function fetchAllRows<T>(
   table: string,
   columns: string,
   orderBy: string[],
-  onProgress?: (loaded: number, total: number) => void,
+  onProgress?: (loaded: number) => void,
 ): Promise<T[]> {
-  const { count, error: countError } = await supabase.from(table).select('*', { count: 'exact', head: true })
-  if (countError) throw new Error(countError.message)
-
-  const total = count ?? 0
-  onProgress?.(0, total)
-  if (total === 0) return []
-
-  const pageCount = Math.ceil(total / PAGE_SIZE)
-  const pageResults: T[][] = new Array(pageCount)
-  let loaded = 0
-
+  const allRows: T[] = []
   let nextPage = 0
-  async function worker() {
-    while (nextPage < pageCount) {
-      const page = nextPage++
-      const from = page * PAGE_SIZE
-      let query = supabase.from(table).select(columns)
-      for (const column of orderBy) query = query.order(column, { ascending: true })
-      const { data, error } = await query.range(from, from + PAGE_SIZE - 1)
-      if (error) throw new Error(error.message)
-      pageResults[page] = data as T[]
-      loaded += data.length
-      onProgress?.(loaded, total)
-    }
+  let reachedEnd = false
+
+  while (!reachedEnd) {
+    const pagesInBatch = Array.from({ length: CONCURRENCY }, (_, i) => nextPage + i)
+    nextPage += CONCURRENCY
+
+    const batchResults = await Promise.all(
+      pagesInBatch.map(async (page) => {
+        let query = supabase.from(table).select(columns)
+        for (const column of orderBy) query = query.order(column, { ascending: true })
+        const from = page * PAGE_SIZE
+        const { data, error } = await query.range(from, from + PAGE_SIZE - 1)
+        if (error) throw new Error(error.message)
+        return data as T[]
+      }),
+    )
+
+    for (const pageRows of batchResults) allRows.push(...pageRows)
+    onProgress?.(allRows.length)
+
+    reachedEnd = batchResults.some((pageRows) => pageRows.length < PAGE_SIZE)
   }
 
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, pageCount) }, () => worker()))
-
-  return pageResults.flat()
+  return allRows
 }

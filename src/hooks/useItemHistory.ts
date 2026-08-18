@@ -14,7 +14,7 @@ export function useItemHistory() {
   const [rows, setRows] = useState<RawVolumeRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null)
+  const [progress, setProgress] = useState<number | null>(null)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -25,7 +25,7 @@ export function useItemHistory() {
         'vp_item_monthly_volume',
         'item_id, plats, period, volume',
         ['item_id', 'period'],
-        (loaded, total) => setProgress({ loaded, total }),
+        (loaded) => setProgress(loaded),
       )
       setRows(data.map((row) => ({ itemId: row.item_id, plats: row.plats, period: row.period, volume: row.volume })))
       setError(null)

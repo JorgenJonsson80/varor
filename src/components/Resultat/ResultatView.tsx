@@ -108,7 +108,7 @@ export function ResultatView() {
     return (
       <p>
         Laddar resultat…
-        {historyProgress && ` (${historyProgress.loaded} / ${historyProgress.total} rader)`}
+        {historyProgress !== null && ` (${historyProgress} rader hittills…)`}
       </p>
     )
   }
