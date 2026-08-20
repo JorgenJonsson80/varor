@@ -55,12 +55,14 @@ export async function fetchAllRows<T>(
   columns: string,
   orderBy: string[],
   onProgress?: (loaded: number) => void,
+  minValueFilter?: { column: string; value: string },
 ): Promise<T[]> {
   const allRows: Record<string, unknown>[] = []
   let cursor: string[] | null = null
 
   for (;;) {
     let query = supabase.from(table).select(columns)
+    if (minValueFilter) query = query.gte(minValueFilter.column, minValueFilter.value)
     for (const column of orderBy) query = query.order(column, { ascending: true })
     if (cursor) query = query.or(buildKeysetFilter(orderBy, cursor))
     const { data, error } = await query.limit(PAGE_SIZE)

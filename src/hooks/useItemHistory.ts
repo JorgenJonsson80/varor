@@ -10,6 +10,23 @@ interface RawRow {
   volume: number
 }
 
+// vp_item_monthly_volume is one row per item per month and has no retention
+// cutoff — it grows every import and is already ~116k rows (see the history
+// in supabasePagination.ts). Every session pulls the whole thing even though
+// buildResultRows only ever looks trend_preceding_months (default 3) or
+// period_good_min_periods (default 4) back from the latest period — a
+// rolling window comfortably above either config trims the transfer without
+// changing any classification result. The one visible effect is a shorter
+// Sparkline tail for items with a long history; 18 months leaves that at
+// ~1.5 years, which is generous for a "steady vs. one-off spike" glance.
+const HISTORY_WINDOW_MONTHS = 18
+
+function periodCutoff(monthsBack: number): string {
+  const d = new Date()
+  d.setMonth(d.getMonth() - monthsBack)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 export function useItemHistory() {
   const [rows, setRows] = useState<RawVolumeRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -26,6 +43,7 @@ export function useItemHistory() {
         'item_id, plats, period, volume',
         ['item_id', 'period'],
         (loaded) => setProgress(loaded),
+        { column: 'period', value: periodCutoff(HISTORY_WINDOW_MONTHS) },
       )
       setRows(data.map((row) => ({ itemId: row.item_id, plats: row.plats, period: row.period, volume: row.volume })))
       setError(null)
