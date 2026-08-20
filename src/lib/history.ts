@@ -171,3 +171,17 @@ export function normalizeLongRows(
   }
   return result
 }
+
+/**
+ * Returns the 'YYYY-MM' period `monthsBack` months before `referenceDate`
+ * — used to bound a rolling fetch window. The day-of-month is reset to 1
+ * before subtracting months: without that, subtracting from e.g. March
+ * 31st lands on "September 31st", which doesn't exist, and JS Date
+ * silently rolls it forward into October — a month later than intended.
+ */
+export function periodCutoff(monthsBack: number, referenceDate: Date = new Date()): string {
+  const d = new Date(referenceDate)
+  d.setDate(1)
+  d.setMonth(d.getMonth() - monthsBack)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}

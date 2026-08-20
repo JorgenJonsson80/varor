@@ -7,6 +7,7 @@ import {
   normalizeMonthLabel,
   normalizeWideRows,
   parseMonthColumn,
+  periodCutoff,
   toNumber,
 } from '../history'
 
@@ -144,5 +145,21 @@ describe('normalizeLongRows', () => {
     ]
     const result = normalizeLongRows(rows, 'vara', 'plats', 'period', 'antal')
     expect(result).toEqual([{ itemId: 'A1', plats: 'P1', period: '2024-01', volume: 5 }])
+  })
+})
+
+describe('periodCutoff', () => {
+  // Local-component constructor throughout (not an ISO date string) to
+  // avoid the test's own result depending on the runner's timezone.
+  it('subtracts months, including across a year boundary', () => {
+    expect(periodCutoff(18, new Date(2026, 7, 20))).toBe('2025-02') // Aug 2026 - 18mo
+    expect(periodCutoff(3, new Date(2026, 0, 15))).toBe('2025-10') // Jan 2026 - 3mo
+  })
+
+  it('does not overflow into the wrong month when the target month is shorter', () => {
+    // May 31 minus 1 month naively lands on "April 31", which doesn't
+    // exist — without resetting the day first, JS Date rolls that forward
+    // to May 1, silently cancelling the subtraction out entirely.
+    expect(periodCutoff(1, new Date(2026, 4, 31))).toBe('2026-04')
   })
 })
