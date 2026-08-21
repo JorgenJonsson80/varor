@@ -108,6 +108,23 @@
   white-space: nowrap;
 }
 
+.sortable-header {
+  cursor: pointer;
+  user-select: none;
+}
+
+.sortable-header:hover {
+  background: var(--accent-bg, rgba(170, 59, 255, 0.08));
+}
+
+.sortable-header.active {
+  color: var(--accent, #aa3bff);
+}
+
+.sort-indicator {
+  font-size: 0.7em;
+}
+
 .sparkline {
   color: var(--accent, #aa3bff);
 }

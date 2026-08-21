@@ -2,7 +2,7 @@ import { paretoClassify, computeBestKlassHistory } from './varuklass'
 import { computeTrend, type TrendConfig } from './trend'
 import { evaluatePeriodGood, type PeriodGoodConfig } from './periodgoods'
 import { determinePlatsklass } from './location'
-import { classifySignal, type SignalType } from './signals'
+import { classifySignal, SIGNAL_TYPES, type SignalType } from './signals'
 import type { Klass, ParetoThresholds, PlatsklassConfig, PlatsklassSource, Trend } from './types'
 
 export interface ResultItemInput {
@@ -152,4 +152,46 @@ export function groupRawVolumeRows(rows: RawVolumeRow[]): {
   }
 
   return { periodLabels, items }
+}
+
+export type ResultSortColumn = 'id' | 'plats' | 'varuklass' | 'platsklass' | 'signal' | 'trend' | 'latestVolume'
+export type SortDirection = 'asc' | 'desc'
+
+const SIGNAL_RANK = Object.fromEntries(SIGNAL_TYPES.map((signal, index) => [signal, index])) as Record<
+  SignalType,
+  number
+>
+
+function compareResultRows(a: ResultRow, b: ResultRow, column: ResultSortColumn): number {
+  switch (column) {
+    case 'id':
+      return a.id.localeCompare(b.id)
+    case 'plats':
+      return a.plats.localeCompare(b.plats)
+    case 'varuklass':
+      return a.varuklass.localeCompare(b.varuklass)
+    case 'platsklass':
+      return a.platsklass.localeCompare(b.platsklass)
+    case 'signal':
+      return SIGNAL_RANK[a.signal] - SIGNAL_RANK[b.signal]
+    case 'trend':
+      return a.trend.localeCompare(b.trend)
+    case 'latestVolume':
+      return a.latestVolume - b.latestVolume
+  }
+}
+
+/**
+ * Sorts by any result column, ascending or descending. Ties always break
+ * on id ascending (regardless of the primary column's direction), so
+ * paging stays stable between renders instead of reordering rows that
+ * compare equal on the chosen column.
+ */
+export function sortResultRows(rows: ResultRow[], column: ResultSortColumn, direction: SortDirection): ResultRow[] {
+  const sign = direction === 'asc' ? 1 : -1
+  return [...rows].sort((a, b) => {
+    const primary = compareResultRows(a, b, column)
+    if (primary !== 0) return primary * sign
+    return a.id.localeCompare(b.id)
+  })
 }

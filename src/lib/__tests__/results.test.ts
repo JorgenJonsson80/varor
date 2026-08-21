@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildResultRows, groupRawVolumeRows } from '../results'
+import { buildResultRows, groupRawVolumeRows, sortResultRows, type ResultRow } from '../results'
 import type { PlatsklassConfig } from '../types'
 
 const periodLabels = ['2024-01', '2024-02', '2024-03', '2024-04']
@@ -109,5 +109,61 @@ describe('groupRawVolumeRows', () => {
     const { items } = groupRawVolumeRows(rows)
     expect(items.find((i) => i.id === 'A1')!.plats).toBe('OLD-LOC')
     expect(items.find((i) => i.id === 'A2')!.plats).toBe('NEW-LOC')
+  })
+})
+
+describe('sortResultRows', () => {
+  function row(overrides: Partial<ResultRow>): ResultRow {
+    return {
+      id: 'X',
+      plats: 'P',
+      series: [10, 10, 10, 10],
+      latestVolume: 10,
+      varuklass: 'B',
+      platsklass: 'B',
+      platsklassSource: 'base',
+      trend: 'stable',
+      changePct: 0,
+      isPeriodGood: false,
+      concentration: null,
+      topMonthIndex: null,
+      bestKlass: 'B',
+      bestPeriod: null,
+      periodGoodProtected: false,
+      signal: 'OK',
+      ...overrides,
+    }
+  }
+
+  const rows = [
+    row({ id: 'C-item', plats: 'P3', varuklass: 'C', latestVolume: 5, signal: 'MISMATCH' }),
+    row({ id: 'A-item', plats: 'P1', varuklass: 'A', latestVolume: 50, signal: 'A_ON_C' }),
+    row({ id: 'B-item', plats: 'P2', varuklass: 'B', latestVolume: 20, signal: 'OK' }),
+  ]
+
+  it('sorts by plats ascending and descending', () => {
+    expect(sortResultRows(rows, 'plats', 'asc').map((r) => r.plats)).toEqual(['P1', 'P2', 'P3'])
+    expect(sortResultRows(rows, 'plats', 'desc').map((r) => r.plats)).toEqual(['P3', 'P2', 'P1'])
+  })
+
+  it('sorts by latestVolume numerically, not lexicographically', () => {
+    expect(sortResultRows(rows, 'latestVolume', 'asc').map((r) => r.latestVolume)).toEqual([5, 20, 50])
+  })
+
+  it('sorts by signal in priority order, not alphabetically', () => {
+    // Alphabetically MISMATCH < OK < A_ON_C, but priority order puts A_ON_C first.
+    expect(sortResultRows(rows, 'signal', 'asc').map((r) => r.signal)).toEqual(['A_ON_C', 'MISMATCH', 'OK'])
+  })
+
+  it('breaks ties on id ascending regardless of the primary sort direction', () => {
+    const tied = [row({ id: 'B', varuklass: 'B' }), row({ id: 'A', varuklass: 'B' }), row({ id: 'C', varuklass: 'B' })]
+    expect(sortResultRows(tied, 'varuklass', 'asc').map((r) => r.id)).toEqual(['A', 'B', 'C'])
+    expect(sortResultRows(tied, 'varuklass', 'desc').map((r) => r.id)).toEqual(['A', 'B', 'C'])
+  })
+
+  it('does not mutate the input array', () => {
+    const original = [...rows]
+    sortResultRows(rows, 'plats', 'desc')
+    expect(rows).toEqual(original)
   })
 })

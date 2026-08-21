@@ -1,17 +1,6 @@
 import type { ResultRow } from './results'
-import type { SignalType } from './signals'
+import { SIGNAL_TYPES, type SignalType } from './signals'
 import type { Klass } from './types'
-
-const SIGNAL_TYPES: SignalType[] = [
-  'A_ON_C',
-  'PERIOD_ON_C',
-  'RISING_ON_C',
-  'PERIOD_ON_GOOD',
-  'ZERO_ON_A',
-  'FALLING_A_ON_A',
-  'MISMATCH',
-  'OK',
-]
 
 export function countBySignal(rows: ResultRow[]): Record<SignalType, number> {
   const counts = Object.fromEntries(SIGNAL_TYPES.map((s) => [s, 0])) as Record<SignalType, number>

@@ -1,7 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useAppData } from '../../context/AppDataContext'
 import { useItemHistory } from '../../hooks/useItemHistory'
-import { buildResultRows, groupRawVolumeRows, type ResultRow } from '../../lib/results'
+import {
+  buildResultRows,
+  groupRawVolumeRows,
+  sortResultRows,
+  type ResultRow,
+  type ResultSortColumn,
+  type SortDirection,
+} from '../../lib/results'
 import type { Klass } from '../../lib/types'
 import type { SignalType } from '../../lib/signals'
 import { ImportPlockstatistik } from '../Plockstatistik/ImportPlockstatistik'
@@ -39,11 +46,26 @@ export function ResultatView() {
   const [textFilter, setTextFilter] = useState('')
   const [klassFilter, setKlassFilter] = useState<{ varuklass: Klass; platsklass: Klass } | null>(null)
   const [page, setPage] = useState(0)
+  const [sort, setSort] = useState<{ column: ResultSortColumn; direction: SortDirection }>({
+    column: 'plats',
+    direction: 'asc',
+  })
 
   function handleSelectKlassCell(varuklass: Klass, platsklass: Klass) {
     setKlassFilter((prev) =>
       prev?.varuklass === varuklass && prev?.platsklass === platsklass ? null : { varuklass, platsklass },
     )
+    setPage(0)
+  }
+
+  // Clicking the same column again flips direction; a new column starts
+  // ascending — except latestVolume, where descending (highest first) is
+  // the more useful default on first click.
+  function handleSort(column: ResultSortColumn) {
+    setSort((prev) => {
+      if (prev.column === column) return { column, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+      return { column, direction: column === 'latestVolume' ? 'desc' : 'asc' }
+    })
     setPage(0)
   }
 
@@ -101,8 +123,13 @@ export function ResultatView() {
     })
   }, [allRows, signalFilter, textFilter, klassFilter])
 
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
-  const pageRows = filteredRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const sortedRows = useMemo(
+    () => sortResultRows(filteredRows, sort.column, sort.direction),
+    [filteredRows, sort],
+  )
+
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE))
+  const pageRows = sortedRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   if (loading) {
     return (
@@ -159,13 +186,13 @@ export function ResultatView() {
           <table className="resultat-table">
             <thead>
               <tr>
-                <th>Vara</th>
-                <th>Plats</th>
-                <th>Varuklass</th>
-                <th>Platsklass</th>
-                <th>Signal</th>
-                <th>Trend</th>
-                <th>Senaste</th>
+                <SortableHeader column="id" label="Vara" sort={sort} onSort={handleSort} />
+                <SortableHeader column="plats" label="Plats" sort={sort} onSort={handleSort} />
+                <SortableHeader column="varuklass" label="Varuklass" sort={sort} onSort={handleSort} />
+                <SortableHeader column="platsklass" label="Platsklass" sort={sort} onSort={handleSort} />
+                <SortableHeader column="signal" label="Signal" sort={sort} onSort={handleSort} />
+                <SortableHeader column="trend" label="Trend" sort={sort} onSort={handleSort} />
+                <SortableHeader column="latestVolume" label="Senaste" sort={sort} onSort={handleSort} />
                 <th>Historik</th>
               </tr>
             </thead>
@@ -206,5 +233,26 @@ export function ResultatView() {
         </>
       )}
     </div>
+  )
+}
+
+interface SortableHeaderProps {
+  column: ResultSortColumn
+  label: string
+  sort: { column: ResultSortColumn; direction: SortDirection }
+  onSort: (column: ResultSortColumn) => void
+}
+
+function SortableHeader({ column, label, sort, onSort }: SortableHeaderProps) {
+  const active = sort.column === column
+  return (
+    <th
+      className={`sortable-header ${active ? 'active' : ''}`}
+      onClick={() => onSort(column)}
+      aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      {label}
+      {active && <span className="sort-indicator">{sort.direction === 'asc' ? ' ▲' : ' ▼'}</span>}
+    </th>
   )
 }
