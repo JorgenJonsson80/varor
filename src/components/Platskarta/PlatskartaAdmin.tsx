@@ -1,12 +1,10 @@
 import { useMemo, useState } from 'react'
 import { determinePlatsklass, getStation } from '../../lib/location'
-import { matchHeatmapPrefixesToLocations } from '../../lib/heatmap'
 import type { Klass } from '../../lib/types'
 import { buildPlatskartaExport, parsePlatskartaExport } from '../../lib/platskartaExport'
 import { useAppData } from '../../context/AppDataContext'
 import { RuleEditor } from './RuleEditor'
 import { ImportLocations } from './ImportLocations'
-import { ImportHeatmap } from './ImportHeatmap'
 import './Platskarta.css'
 
 interface Props {
@@ -137,30 +135,6 @@ export function PlatskartaAdmin({ userId }: Props) {
     setMessage(null)
   }
 
-  // Heatmap only ever proposes A (green zone) — never touches C, matching
-  // the explicit decision that red-zone locations get tagged by hand. The
-  // heatmap's location label is a PREFIX, not a complete plats — e.g.
-  // "P1010-01--A-" covers the real locations "P1010-01--A-2-" and
-  // "P1010-01--A-3-" (different shelf levels), which the label alone
-  // doesn't distinguish. Match against the real, already-known locations
-  // rather than ever treating the prefix itself as a plats — a prefix
-  // that matches nothing means those shelf-level locations haven't been
-  // imported into the platskarta yet, so it's reported, not invented.
-  function handleHeatmapGreenLocations(greenPrefixes: string[]) {
-    const { matched, unmatchedPrefixes } = matchHeatmapPrefixesToLocations(
-      greenPrefixes,
-      locations.map((l) => l.plats),
-    )
-    stageSet(matched, 'A')
-    setMessage(
-      `${matched.length} platser förberedda som A (från ${greenPrefixes.length - unmatchedPrefixes.length} ` +
-        `heatmap-positioner).` +
-        (unmatchedPrefixes.length > 0
-          ? ` ${unmatchedPrefixes.length} positioner fanns inte i platslistan än och hoppades över.`
-          : ''),
-    )
-  }
-
   function handleExport() {
     const payload = buildPlatskartaExport({
       baseKlass,
@@ -242,12 +216,6 @@ export function PlatskartaAdmin({ userId }: Props) {
       </div>
 
       <ImportLocations onImport={importLocations} />
-
-      <ImportHeatmap
-        stationStart={stationStart}
-        stationEnd={stationEnd}
-        onGreenLocationsFound={handleHeatmapGreenLocations}
-      />
 
       <RuleEditor rules={rules} onAdd={addRule} onUpdate={updateRule} onDelete={deleteRule} onReorder={reorder} />
 
