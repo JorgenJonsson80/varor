@@ -34,6 +34,7 @@
 }
 
 .import-locations,
+.import-heatmap,
 .rule-editor {
   border: 1px solid var(--border, #e5e4e7);
   border-radius: 0.5rem;
@@ -41,6 +42,7 @@
 }
 
 .import-locations summary,
+.import-heatmap summary,
 .rule-editor summary {
   cursor: pointer;
   font-weight: 600;
