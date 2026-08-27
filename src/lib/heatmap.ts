@@ -207,3 +207,31 @@ export async function extractSheetXml(file: File, sheetIndex: number): Promise<s
   if (!entry) throw new Error(`Kunde inte hitta blad ${sheetIndex + 1} i filen.`)
   return entry.async('string')
 }
+
+export interface PrefixMatchResult {
+  matched: string[]
+  unmatchedPrefixes: string[]
+}
+
+/**
+ * A heatmap location label is a PREFIX of the real location code, not a
+ * complete identifier — e.g. the heatmap's "P1010-01--A-" corresponds to
+ * the real locations "P1010-01--A-2-" and "P1010-01--A-3-" (different
+ * shelf levels within the same bay+letter), which the label itself doesn't
+ * distinguish. Treating the label as if it WERE a plats would stage a tag
+ * for a location that doesn't exist. This matches every real, already-known
+ * location whose plats starts with the heatmap's prefix instead — a prefix
+ * with no match at all means those specific shelf-level locations haven't
+ * been imported into the platskarta yet, so it's reported rather than
+ * silently dropped or invented.
+ */
+export function matchHeatmapPrefixesToLocations(prefixes: string[], allPlats: string[]): PrefixMatchResult {
+  const matched: string[] = []
+  const unmatchedPrefixes: string[] = []
+  for (const prefix of prefixes) {
+    const matches = allPlats.filter((plats) => plats.startsWith(prefix))
+    if (matches.length > 0) matched.push(...matches)
+    else unmatchedPrefixes.push(prefix)
+  }
+  return { matched, unmatchedPrefixes }
+}

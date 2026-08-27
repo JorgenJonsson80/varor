@@ -6,7 +6,8 @@ import { getStation } from '../../lib/location'
 interface Props {
   stationStart: number
   stationEnd: number
-  onGreenLocationsFound: (locations: string[]) => void
+  /** Heatmap location labels are prefixes (e.g. "P1010-01--A-"), not complete plats strings — the caller matches them against real locations. */
+  onGreenLocationsFound: (prefixes: string[]) => void
 }
 
 const MIN_STATION = 10
@@ -45,8 +46,8 @@ export function ImportHeatmap({ stationStart, stationEnd, onGreenLocationsFound 
 
       setPreview({ green, red })
       setStatus(
-        `"${sheetName}": ${green.length} gröna platser hittade (stn ${MIN_STATION}–${MAX_STATION}, ej 36/50). ` +
-          `${red} röda hittades också men rörs inte.`,
+        `"${sheetName}": ${green.length} gröna positioner hittade (stn ${MIN_STATION}–${MAX_STATION}, ej ` +
+          `36/50). ${red} röda hittades också men rörs inte.`,
       )
     } catch (e) {
       setStatus(`Kunde inte läsa filen: ${e instanceof Error ? e.message : String(e)}`)
@@ -58,8 +59,8 @@ export function ImportHeatmap({ stationStart, stationEnd, onGreenLocationsFound 
   function handleApply() {
     if (!preview) return
     onGreenLocationsFound(preview.green)
-    setStatus(`${preview.green.length} gröna platser förberedda som A — granska och spara i platslistan.`)
     setPreview(null)
+    setStatus(null)
   }
 
   return (
@@ -68,8 +69,10 @@ export function ImportHeatmap({ stationStart, stationEnd, onGreenLocationsFound 
       <p className="hint">
         Läser en heatmap-export och föreslår klass A för platser i grön zon inom stn {MIN_STATION}
         –{MAX_STATION} (ej 36/50, redan täckta av regler/manuellt). Röda platser rörs aldrig — de
-        taggar du själv. Föreslagna platser blir väntande ändringar, inget sparas förrän du trycker "Spara
-        ändringar" nedan.
+        taggar du själv. Heatmappens platsangivelse är en förkortad prefix (t.ex. "P1010-01--A-"), inte en
+        komplett plats — den matchas mot alla dina befintliga platser som börjar så (t.ex.
+        "P1010-01--A-2-" och "-3-"), inte mot prefixet självt. Föreslagna platser blir väntande ändringar,
+        inget sparas förrän du trycker "Spara ändringar" nedan.
       </p>
       <input
         type="file"
@@ -84,7 +87,7 @@ export function ImportHeatmap({ stationStart, stationEnd, onGreenLocationsFound 
       {status && <p className="import-status">{status}</p>}
       {preview && preview.green.length > 0 && (
         <button type="button" onClick={handleApply}>
-          Föreslå {preview.green.length} platser som A
+          Matcha {preview.green.length} positioner mot platslistan och föreslå som A
         </button>
       )}
     </details>

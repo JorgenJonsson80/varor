@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { determinePlatsklass, getStation } from '../../lib/location'
+import { matchHeatmapPrefixesToLocations } from '../../lib/heatmap'
 import type { Klass } from '../../lib/types'
 import { buildPlatskartaExport, parsePlatskartaExport } from '../../lib/platskartaExport'
 import { useAppData } from '../../context/AppDataContext'
@@ -137,29 +138,27 @@ export function PlatskartaAdmin({ userId }: Props) {
   }
 
   // Heatmap only ever proposes A (green zone) — never touches C, matching
-  // the explicit decision that red-zone locations get tagged by hand.
-  // Locations the heatmap references but that aren't in the platskarta yet
-  // (no JDE location import has seen them) are added first so the staged
-  // change has something to attach to — same upsert-only-new behavior as
-  // the regular location import.
-  async function handleHeatmapGreenLocations(greenLocations: string[]) {
-    setBusy(true)
-    try {
-      const known = new Set(locations.map((l) => l.plats))
-      const missing = greenLocations.filter((plats) => !known.has(plats))
-      if (missing.length > 0) {
-        await importLocations(missing)
-      }
-      stageSet(greenLocations, 'A')
-      setMessage(
-        `${greenLocations.length} platser från heatmap förberedda som A` +
-          (missing.length > 0 ? ` (${missing.length} nya platser lades först till i platslistan).` : '.'),
-      )
-    } catch (e) {
-      setMessage(`Kunde inte lägga till platser från heatmap: ${e instanceof Error ? e.message : String(e)}`)
-    } finally {
-      setBusy(false)
-    }
+  // the explicit decision that red-zone locations get tagged by hand. The
+  // heatmap's location label is a PREFIX, not a complete plats — e.g.
+  // "P1010-01--A-" covers the real locations "P1010-01--A-2-" and
+  // "P1010-01--A-3-" (different shelf levels), which the label alone
+  // doesn't distinguish. Match against the real, already-known locations
+  // rather than ever treating the prefix itself as a plats — a prefix
+  // that matches nothing means those shelf-level locations haven't been
+  // imported into the platskarta yet, so it's reported, not invented.
+  function handleHeatmapGreenLocations(greenPrefixes: string[]) {
+    const { matched, unmatchedPrefixes } = matchHeatmapPrefixesToLocations(
+      greenPrefixes,
+      locations.map((l) => l.plats),
+    )
+    stageSet(matched, 'A')
+    setMessage(
+      `${matched.length} platser förberedda som A (från ${greenPrefixes.length - unmatchedPrefixes.length} ` +
+        `heatmap-positioner).` +
+        (unmatchedPrefixes.length > 0
+          ? ` ${unmatchedPrefixes.length} positioner fanns inte i platslistan än och hoppades över.`
+          : ''),
+    )
   }
 
   function handleExport() {
