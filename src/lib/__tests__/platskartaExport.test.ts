@@ -8,10 +8,23 @@ describe('platskartaExport round trip', () => {
       stationStart: 4,
       stationEnd: 5,
       rules: [{ position: 2, values: ['4', '7'], klass: 'C' }],
+      prefixRules: [{ prefix: 'P1010-07--C-', klass: 'A' }],
       manual: { 'P1010-05--A-2-': 'A' },
     })
     const roundTripped = JSON.parse(JSON.stringify(built))
     expect(parsePlatskartaExport(roundTripped)).toEqual(built)
+  })
+
+  it('defaults prefixRules to an empty list for files exported before it existed', () => {
+    const legacyPayload = {
+      version: 1,
+      baseKlass: 'B',
+      stationStart: 4,
+      stationEnd: 5,
+      rules: [],
+      manual: {},
+    }
+    expect(parsePlatskartaExport(legacyPayload).prefixRules).toEqual([])
   })
 })
 
@@ -38,6 +51,19 @@ describe('parsePlatskartaExport validation', () => {
       manual: {},
     }
     expect(() => parsePlatskartaExport(payload)).toThrow(/rules/)
+  })
+
+  it('rejects a malformed prefix rule', () => {
+    const payload = {
+      version: 1,
+      baseKlass: 'B',
+      stationStart: 4,
+      stationEnd: 5,
+      rules: [],
+      prefixRules: [{ prefix: '', klass: 'A' }],
+      manual: {},
+    }
+    expect(() => parsePlatskartaExport(payload)).toThrow(/prefixRules/)
   })
 
   it('rejects a malformed manual klass value', () => {

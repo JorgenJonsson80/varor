@@ -85,4 +85,78 @@ describe('determinePlatsklass', () => {
     // Both rules match this location; the first one in the list wins.
     expect(determinePlatsklass(plats, config)).toEqual({ klass: 'C', source: 'rule', ruleIndex: 0 })
   })
+
+  describe('prefix rules', () => {
+    it('classifies an unimported shelf level via a prefix rule', () => {
+      // P1010-07--C-2- was never manually tagged or imported, but its
+      // whole family was covered by a prefix rule.
+      const config: PlatsklassConfig = {
+        ...baseConfig,
+        rules: [],
+        prefixRules: [{ prefix: 'P1010-07--C-', klass: 'A' }],
+      }
+      expect(determinePlatsklass('P1010-07--C-2-', config)).toEqual({
+        klass: 'A',
+        source: 'prefix',
+        prefix: 'P1010-07--C-',
+      })
+    })
+
+    it('does not match a location outside the prefix', () => {
+      const config: PlatsklassConfig = {
+        ...baseConfig,
+        rules: [],
+        prefixRules: [{ prefix: 'P1010-07--C-', klass: 'A' }],
+      }
+      expect(determinePlatsklass('P1010-07--B-2-', config)).toEqual({ klass: 'B', source: 'base' })
+    })
+
+    it('picks the longest (most specific) matching prefix', () => {
+      const config: PlatsklassConfig = {
+        ...baseConfig,
+        rules: [],
+        prefixRules: [
+          { prefix: 'P1010-07--', klass: 'B' },
+          { prefix: 'P1010-07--C-', klass: 'A' },
+        ],
+      }
+      expect(determinePlatsklass('P1010-07--C-2-', config)).toEqual({
+        klass: 'A',
+        source: 'prefix',
+        prefix: 'P1010-07--C-',
+      })
+      // Same station, different row -> only the shorter prefix matches.
+      expect(determinePlatsklass('P1010-07--D-2-', config)).toEqual({
+        klass: 'B',
+        source: 'prefix',
+        prefix: 'P1010-07--',
+      })
+    })
+
+    it('lets an exact manual tag override a matching prefix rule', () => {
+      const config: PlatsklassConfig = {
+        ...baseConfig,
+        rules: [],
+        manual: { 'P1010-07--C-2-': 'C' },
+        prefixRules: [{ prefix: 'P1010-07--C-', klass: 'A' }],
+      }
+      expect(determinePlatsklass('P1010-07--C-2-', config)).toEqual({ klass: 'C', source: 'manual' })
+    })
+
+    it('lets a prefix rule override a matching position rule', () => {
+      // baseConfig's rule flags position-2 values '4'/'7' as C; this
+      // location matches it, but a prefix rule should still win.
+      const plats = 'P1015-58--E-4A'
+      expect(charAtPos(plats, 2)).toBe('4')
+      const config: PlatsklassConfig = {
+        ...baseConfig,
+        prefixRules: [{ prefix: 'P1015-58--E-', klass: 'A' }],
+      }
+      expect(determinePlatsklass(plats, config)).toEqual({
+        klass: 'A',
+        source: 'prefix',
+        prefix: 'P1015-58--E-',
+      })
+    })
+  })
 })

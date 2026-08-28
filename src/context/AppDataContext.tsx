@@ -1,11 +1,13 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import { useLocationConfig } from '../hooks/useLocationConfig'
 import { usePlatsklassRules } from '../hooks/usePlatsklassRules'
+import { usePrefixRules } from '../hooks/usePrefixRules'
 import { useLocations } from '../hooks/useLocations'
 
 interface AppDataContextValue {
   configData: ReturnType<typeof useLocationConfig>
   rulesData: ReturnType<typeof usePlatsklassRules>
+  prefixRulesData: ReturnType<typeof usePrefixRules>
   locationsData: ReturnType<typeof useLocations>
 }
 
@@ -22,10 +24,13 @@ const AppDataContext = createContext<AppDataContextValue | null>(null)
 export function AppDataProvider({ children }: { children: ReactNode }) {
   const configData = useLocationConfig()
   const rulesData = usePlatsklassRules()
+  const prefixRulesData = usePrefixRules()
   const locationsData = useLocations()
 
   return (
-    <AppDataContext.Provider value={{ configData, rulesData, locationsData }}>{children}</AppDataContext.Provider>
+    <AppDataContext.Provider value={{ configData, rulesData, prefixRulesData, locationsData }}>
+      {children}
+    </AppDataContext.Provider>
   )
 }
 

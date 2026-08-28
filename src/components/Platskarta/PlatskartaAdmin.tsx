@@ -4,6 +4,7 @@ import type { Klass } from '../../lib/types'
 import { buildPlatskartaExport, parsePlatskartaExport } from '../../lib/platskartaExport'
 import { useAppData } from '../../context/AppDataContext'
 import { RuleEditor } from './RuleEditor'
+import { PrefixRuleEditor } from './PrefixRuleEditor'
 import { ImportLocations } from './ImportLocations'
 import './Platskarta.css'
 
@@ -12,9 +13,16 @@ interface Props {
 }
 
 export function PlatskartaAdmin({ userId }: Props) {
-  const { configData, rulesData, locationsData } = useAppData()
+  const { configData, rulesData, prefixRulesData, locationsData } = useAppData()
   const { config, loading: configLoading, update: updateConfig } = configData
   const { rules, loading: rulesLoading, addRule, updateRule, deleteRule, reorder, replaceAll } = rulesData
+  const {
+    prefixRules,
+    loading: prefixRulesLoading,
+    saveRule: savePrefixRule,
+    deleteRule: deletePrefixRule,
+    replaceAll: replacePrefixRules,
+  } = prefixRulesData
   const {
     locations,
     loading: locationsLoading,
@@ -68,8 +76,8 @@ export function PlatskartaAdmin({ userId }: Props) {
   )
 
   const platsklassConfig = useMemo(
-    () => ({ manual: previewManualMap, rules: plainRules, baseKlass, stationStart, stationEnd }),
-    [previewManualMap, plainRules, baseKlass, stationStart, stationEnd],
+    () => ({ manual: previewManualMap, prefixRules, rules: plainRules, baseKlass, stationStart, stationEnd }),
+    [previewManualMap, prefixRules, plainRules, baseKlass, stationStart, stationEnd],
   )
 
   const filtered = useMemo(() => {
@@ -141,6 +149,7 @@ export function PlatskartaAdmin({ userId }: Props) {
       stationStart,
       stationEnd,
       rules: plainRules,
+      prefixRules,
       manual: manualMap,
     })
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
@@ -168,6 +177,8 @@ export function PlatskartaAdmin({ userId }: Props) {
         parsed.rules.map((r, i) => ({ sort_order: i, position: r.position, values: r.values, klass: r.klass })),
       )
 
+      await replacePrefixRules(parsed.prefixRules)
+
       const byKlass = new Map<Klass, string[]>()
       for (const [plats, klass] of Object.entries(parsed.manual)) {
         byKlass.set(klass, [...(byKlass.get(klass) ?? []), plats])
@@ -177,7 +188,8 @@ export function PlatskartaAdmin({ userId }: Props) {
       }
 
       setMessage(
-        `Import klar: ${parsed.rules.length} regler, ${Object.keys(parsed.manual).length} manuella platser.`,
+        `Import klar: ${parsed.rules.length} regler, ${parsed.prefixRules.length} platsregler, ` +
+          `${Object.keys(parsed.manual).length} manuella platser.`,
       )
     } catch (e) {
       setMessage(`Import misslyckades: ${e instanceof Error ? e.message : String(e)}`)
@@ -186,7 +198,7 @@ export function PlatskartaAdmin({ userId }: Props) {
     }
   }
 
-  if (configLoading || rulesLoading || locationsLoading) {
+  if (configLoading || rulesLoading || prefixRulesLoading || locationsLoading) {
     return <p>Laddar platskarta…</p>
   }
 
@@ -216,6 +228,8 @@ export function PlatskartaAdmin({ userId }: Props) {
       </div>
 
       <ImportLocations onImport={importLocations} />
+
+      <PrefixRuleEditor prefixRules={prefixRules} onSave={savePrefixRule} onDelete={deletePrefixRule} />
 
       <RuleEditor rules={rules} onAdd={addRule} onUpdate={updateRule} onDelete={deleteRule} onReorder={reorder} />
 
@@ -310,6 +324,7 @@ export function PlatskartaAdmin({ userId }: Props) {
                     <td className={`klass klass-${result.klass}`}>{result.klass}</td>
                     <td>
                       {result.source === 'manual' && (isPending ? 'Manuell (ej sparad)' : 'Manuell')}
+                      {result.source === 'prefix' && `Platsregel (${result.prefix})`}
                       {result.source === 'rule' && `Regel ${(result.ruleIndex ?? 0) + 1}`}
                       {result.source === 'base' && 'Grundklass'}
                     </td>

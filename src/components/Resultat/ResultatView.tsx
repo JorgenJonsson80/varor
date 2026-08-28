@@ -52,9 +52,10 @@ function formatPeriodLabel(period: string): string {
 }
 
 export function ResultatView() {
-  const { configData, rulesData, locationsData } = useAppData()
+  const { configData, rulesData, prefixRulesData, locationsData } = useAppData()
   const { config, loading: configLoading } = configData
   const { rules, loading: rulesLoading } = rulesData
+  const { prefixRules, loading: prefixRulesLoading } = prefixRulesData
   const { locations, loading: locationsLoading } = locationsData
   const {
     rows: historyRows,
@@ -92,7 +93,7 @@ export function ResultatView() {
     setPage(0)
   }
 
-  const loading = configLoading || rulesLoading || locationsLoading || historyLoading
+  const loading = configLoading || rulesLoading || prefixRulesLoading || locationsLoading || historyLoading
 
   const manualMap = useMemo(() => {
     const map: Record<string, Klass> = {}
@@ -103,12 +104,13 @@ export function ResultatView() {
   const platsklassConfig = useMemo(
     () => ({
       manual: manualMap,
+      prefixRules,
       rules: rules.map((r) => ({ position: r.position, values: r.values, klass: r.klass })),
       baseKlass: config?.base_klass ?? ('B' as Klass),
       stationStart: config?.station_start ?? 4,
       stationEnd: config?.station_end ?? 5,
     }),
-    [manualMap, rules, config],
+    [manualMap, prefixRules, rules, config],
   )
 
   const resultConfig = useMemo(
