@@ -162,7 +162,11 @@ export function ResultatView() {
   )
 
   const volumeColumnLabel =
-    viewSelection === 'latest' ? 'Senaste' : viewSelection === 'average' ? 'Snitt' : formatPeriodLabel(viewSelection)
+    viewSelection === 'latest'
+      ? 'Senaste'
+      : viewSelection === 'average'
+        ? `Snitt (${periodLabels.length} mån)`
+        : formatPeriodLabel(viewSelection)
 
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE))
   const pageRows = sortedRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
@@ -196,7 +200,7 @@ export function ResultatView() {
               }}
             >
               <option value="latest">Senaste månaden</option>
-              <option value="average">Snitt (alla månader)</option>
+              <option value="average">Snitt ({periodLabels.length} månader)</option>
               {periodLabels.map((period) => (
                 <option key={period} value={period}>
                   {formatPeriodLabel(period)}
