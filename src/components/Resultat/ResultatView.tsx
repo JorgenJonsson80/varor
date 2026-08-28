@@ -7,6 +7,7 @@ import {
   sortResultRows,
   type ResultRow,
   type ResultSortColumn,
+  type ResultViewMode,
   type SortDirection,
 } from '../../lib/results'
 import type { Klass } from '../../lib/types'
@@ -29,6 +30,27 @@ const SIGNAL_LABELS: Record<SignalType, string> = {
 
 const PAGE_SIZE = 100
 
+const MONTH_NAMES = [
+  'Januari',
+  'Februari',
+  'Mars',
+  'April',
+  'Maj',
+  'Juni',
+  'Juli',
+  'Augusti',
+  'September',
+  'Oktober',
+  'November',
+  'December',
+]
+
+function formatPeriodLabel(period: string): string {
+  const match = period.match(/^(\d{4})-(\d{2})$/)
+  const name = match ? MONTH_NAMES[Number(match[2]) - 1] : null
+  return match && name ? `${name} ${match[1]}` : period
+}
+
 export function ResultatView() {
   const { configData, rulesData, locationsData } = useAppData()
   const { config, loading: configLoading } = configData
@@ -42,6 +64,7 @@ export function ResultatView() {
     reload,
   } = useItemHistory()
 
+  const [viewSelection, setViewSelection] = useState<'latest' | 'average' | string>('latest')
   const [signalFilter, setSignalFilter] = useState<'avvikelser' | 'alla'>('avvikelser')
   const [textFilter, setTextFilter] = useState('')
   const [klassFilter, setKlassFilter] = useState<{ varuklass: Klass; platsklass: Klass } | null>(null)
@@ -104,11 +127,21 @@ export function ResultatView() {
     [config],
   )
 
+  const grouped = useMemo(() => groupRawVolumeRows(historyRows), [historyRows])
+  const { periodLabels } = grouped
+
+  // Falls back to "latest" if the picked month isn't in the current dataset
+  // (e.g. a reload brings in data that no longer has that period).
+  const viewMode: ResultViewMode = useMemo(() => {
+    if (viewSelection === 'average') return { type: 'average' }
+    const index = periodLabels.indexOf(viewSelection)
+    return index >= 0 ? { type: 'period', index } : { type: 'latest' }
+  }, [viewSelection, periodLabels])
+
   const allRows: ResultRow[] = useMemo(() => {
     if (historyRows.length === 0) return []
-    const { periodLabels, items } = groupRawVolumeRows(historyRows)
-    return buildResultRows(items, periodLabels, platsklassConfig, resultConfig)
-  }, [historyRows, platsklassConfig, resultConfig])
+    return buildResultRows(grouped.items, periodLabels, platsklassConfig, resultConfig, viewMode)
+  }, [historyRows, grouped, periodLabels, platsklassConfig, resultConfig, viewMode])
 
   const filteredRows = useMemo(() => {
     const needle = textFilter.trim().toLowerCase()
@@ -127,6 +160,9 @@ export function ResultatView() {
     () => sortResultRows(filteredRows, sort.column, sort.direction),
     [filteredRows, sort],
   )
+
+  const volumeColumnLabel =
+    viewSelection === 'latest' ? 'Senaste' : viewSelection === 'average' ? 'Snitt' : formatPeriodLabel(viewSelection)
 
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE))
   const pageRows = sortedRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
@@ -152,6 +188,21 @@ export function ResultatView() {
           <SummaryPanel rows={allRows} activeKlassFilter={klassFilter} onSelectKlassCell={handleSelectKlassCell} />
 
           <div className="resultat-controls">
+            <select
+              value={viewSelection}
+              onChange={(e) => {
+                setViewSelection(e.target.value)
+                setPage(0)
+              }}
+            >
+              <option value="latest">Senaste månaden</option>
+              <option value="average">Snitt (alla månader)</option>
+              {periodLabels.map((period) => (
+                <option key={period} value={period}>
+                  {formatPeriodLabel(period)}
+                </option>
+              ))}
+            </select>
             <select
               value={signalFilter}
               disabled={klassFilter !== null}
@@ -192,7 +243,7 @@ export function ResultatView() {
                 <SortableHeader column="platsklass" label="Platsklass" sort={sort} onSort={handleSort} />
                 <SortableHeader column="signal" label="Signal" sort={sort} onSort={handleSort} />
                 <SortableHeader column="trend" label="Trend" sort={sort} onSort={handleSort} />
-                <SortableHeader column="latestVolume" label="Senaste" sort={sort} onSort={handleSort} />
+                <SortableHeader column="latestVolume" label={volumeColumnLabel} sort={sort} onSort={handleSort} />
                 <th>Historik</th>
               </tr>
             </thead>
@@ -210,7 +261,7 @@ export function ResultatView() {
                     {row.trend === 'stable' && '→'}
                     {row.changePct !== null && ` ${Math.round(row.changePct * 100)}%`}
                   </td>
-                  <td>{row.latestVolume}</td>
+                  <td>{Math.round(row.viewVolume * 10) / 10}</td>
                   <td>
                     <Sparkline series={row.series} />
                   </td>

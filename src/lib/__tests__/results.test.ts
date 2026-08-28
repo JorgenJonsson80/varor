@@ -85,6 +85,85 @@ describe('buildResultRows', () => {
   })
 })
 
+describe('buildResultRows — viewMode', () => {
+  it("defaults to the latest period, same as before viewMode existed", () => {
+    const items = [
+      { id: 'A1', plats: 'LOC-B', series: [0, 0, 0, 700] },
+      { id: 'A2', plats: 'LOC-B', series: [0, 0, 0, 300] },
+    ]
+    const rows = buildResultRows(items, periodLabels, platsklassConfig, config)
+    expect(rows.find((r) => r.id === 'A1')).toMatchObject({ varuklass: 'A', viewVolume: 700 })
+  })
+
+  it('classifies a single picked month independently of the rest of the series', () => {
+    // Month index 0: A1=700, A2=300 -> A1 is 70% share -> A.
+    // Latest month (index 3) is the reverse, so this only passes if the
+    // picked period actually drives the classification.
+    const items = [
+      { id: 'A1', plats: 'LOC-B', series: [700, 0, 0, 300] },
+      { id: 'A2', plats: 'LOC-B', series: [300, 0, 0, 700] },
+    ]
+    const rows = buildResultRows(items, periodLabels, platsklassConfig, config, { type: 'period', index: 0 })
+    expect(rows.find((r) => r.id === 'A1')).toMatchObject({ varuklass: 'A', viewVolume: 700 })
+    expect(rows.find((r) => r.id === 'A2')).toMatchObject({ varuklass: 'C', viewVolume: 300 })
+  })
+
+  it('uses the plats the item had during the picked month, not its latest plats', () => {
+    const items = [
+      {
+        id: 'A1',
+        plats: 'LOC-B',
+        series: [700, 700, 700, 700],
+        platsSeries: ['LOC-C', 'LOC-C', 'LOC-B', 'LOC-B'],
+      },
+    ]
+    const rows = buildResultRows(items, periodLabels, platsklassConfig, config, { type: 'period', index: 0 })
+    expect(rows[0]).toMatchObject({ plats: 'LOC-C', platsklass: 'C' })
+  })
+
+  it('falls back to the closest known earlier plats when the picked month has no row for the item', () => {
+    const items = [
+      {
+        id: 'A1',
+        plats: 'LOC-B',
+        series: [700, 700, 700, 700],
+        platsSeries: ['LOC-C', null, 'LOC-B', 'LOC-B'],
+      },
+    ]
+    const rows = buildResultRows(items, periodLabels, platsklassConfig, config, { type: 'period', index: 1 })
+    expect(rows[0].plats).toBe('LOC-C')
+  })
+
+  it('falls back to the closest known later plats when nothing earlier is known (item introduced after this month)', () => {
+    const items = [
+      {
+        id: 'A1',
+        plats: 'LOC-B',
+        series: [0, 0, 700, 700],
+        platsSeries: [null, null, 'LOC-C', 'LOC-C'],
+      },
+    ]
+    const rows = buildResultRows(items, periodLabels, platsklassConfig, config, { type: 'period', index: 0 })
+    expect(rows[0].plats).toBe('LOC-C')
+  })
+
+  it('classifies "snitt" on the average volume across all periods, not any single month', () => {
+    // A1 averages 400/mo (spikes once), A2 is steady at 300/mo -> A1 has
+    // the larger average and should out-rank A2 under "snitt", even though
+    // most individual months A2 >= A1.
+    const items = [
+      { id: 'A1', plats: 'LOC-B', series: [100, 100, 100, 1300] },
+      { id: 'A2', plats: 'LOC-B', series: [300, 300, 300, 300] },
+    ]
+    const rows = buildResultRows(items, periodLabels, platsklassConfig, config, { type: 'average' })
+    const a1 = rows.find((r) => r.id === 'A1')!
+    const a2 = rows.find((r) => r.id === 'A2')!
+    expect(a1.viewVolume).toBe(400)
+    expect(a2.viewVolume).toBe(300)
+    expect(a1.varuklass).toBe('A')
+  })
+})
+
 describe('groupRawVolumeRows', () => {
   it('builds an aligned series per item and picks up all distinct periods, sorted', () => {
     const rows = [
@@ -94,9 +173,20 @@ describe('groupRawVolumeRows', () => {
     ]
     const { periodLabels, items } = groupRawVolumeRows(rows)
     expect(periodLabels).toEqual(['2024-01', '2024-02'])
-    expect(items.find((i) => i.id === 'A1')).toEqual({ id: 'A1', plats: 'P1', series: [10, 20] })
-    // A2 has no row for 2024-02 -> treated as 0, never dropped.
-    expect(items.find((i) => i.id === 'A2')).toEqual({ id: 'A2', plats: 'P2', series: [5, 0] })
+    expect(items.find((i) => i.id === 'A1')).toEqual({
+      id: 'A1',
+      plats: 'P1',
+      series: [10, 20],
+      platsSeries: ['P1', 'P1'],
+    })
+    // A2 has no row for 2024-02 -> volume treated as 0, never dropped, but
+    // its location for that period is genuinely unknown (null), not P2.
+    expect(items.find((i) => i.id === 'A2')).toEqual({
+      id: 'A2',
+      plats: 'P2',
+      series: [5, 0],
+      platsSeries: ['P2', null],
+    })
   })
 
   it("uses the item's own latest period as its current location, not the dataset's latest period", () => {
@@ -119,6 +209,7 @@ describe('sortResultRows', () => {
       plats: 'P',
       series: [10, 10, 10, 10],
       latestVolume: 10,
+      viewVolume: 10,
       varuklass: 'B',
       platsklass: 'B',
       platsklassSource: 'base',
@@ -136,9 +227,9 @@ describe('sortResultRows', () => {
   }
 
   const rows = [
-    row({ id: 'C-item', plats: 'P3', varuklass: 'C', latestVolume: 5, signal: 'MISMATCH' }),
-    row({ id: 'A-item', plats: 'P1', varuklass: 'A', latestVolume: 50, signal: 'A_ON_C' }),
-    row({ id: 'B-item', plats: 'P2', varuklass: 'B', latestVolume: 20, signal: 'OK' }),
+    row({ id: 'C-item', plats: 'P3', varuklass: 'C', latestVolume: 5, viewVolume: 5, signal: 'MISMATCH' }),
+    row({ id: 'A-item', plats: 'P1', varuklass: 'A', latestVolume: 50, viewVolume: 50, signal: 'A_ON_C' }),
+    row({ id: 'B-item', plats: 'P2', varuklass: 'B', latestVolume: 20, viewVolume: 20, signal: 'OK' }),
   ]
 
   it('sorts by plats ascending and descending', () => {

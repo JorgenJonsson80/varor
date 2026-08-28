@@ -8,6 +8,7 @@ function row(overrides: Partial<ResultRow>): ResultRow {
     plats: 'P',
     series: [10, 10, 10, 10],
     latestVolume: 10,
+    viewVolume: 10,
     varuklass: 'B',
     platsklass: 'B',
     platsklassSource: 'base',

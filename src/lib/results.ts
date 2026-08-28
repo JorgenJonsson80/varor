@@ -10,6 +10,8 @@ export interface ResultItemInput {
   /** The item's current location — the plats from its most recent period. */
   plats: string
   series: number[]
+  /** Location per period, aligned to periodLabels; null where the item has no row that period. Only needed for viewMode 'period'. */
+  platsSeries?: (string | null)[]
 }
 
 export interface ResultConfig {
@@ -18,11 +20,21 @@ export interface ResultConfig {
   periodGood: PeriodGoodConfig
 }
 
+/**
+ * Which snapshot of an item's history to classify against: the latest
+ * period (today's default view), a single specific period (a clicked
+ * month), or the average volume across every entered period ("snitt") —
+ * a stable typical-month picture that doesn't jump around on a single
+ * spike or dip.
+ */
+export type ResultViewMode = { type: 'latest' } | { type: 'average' } | { type: 'period'; index: number }
+
 export interface ResultRow {
   id: string
   plats: string
   series: number[]
   latestVolume: number
+  viewVolume: number
   varuklass: Klass
   platsklass: Klass
   platsklassSource: PlatsklassSource
@@ -37,24 +49,50 @@ export interface ResultRow {
   signal: SignalType
 }
 
+function resolveViewVolume(series: number[], viewMode: ResultViewMode): number {
+  if (viewMode.type === 'average') {
+    return series.length > 0 ? series.reduce((sum, v) => sum + v, 0) / series.length : 0
+  }
+  const index = viewMode.type === 'period' ? viewMode.index : series.length - 1
+  return series[index] ?? 0
+}
+
+/**
+ * For a specific viewed period, uses the plats the item had THAT month.
+ * When the item has no row for that exact month (sparse history), falls
+ * back to the closest earlier known location — it hasn't moved since —
+ * and only looks forward if it has no history at or before that point
+ * (e.g. the item didn't exist yet).
+ */
+function resolveViewPlats(item: ResultItemInput, viewMode: ResultViewMode): string {
+  if (viewMode.type !== 'period' || !item.platsSeries) return item.plats
+  const { platsSeries } = item
+  for (let i = viewMode.index; i >= 0; i--) {
+    if (platsSeries[i]) return platsSeries[i]!
+  }
+  for (let i = viewMode.index + 1; i < platsSeries.length; i++) {
+    if (platsSeries[i]) return platsSeries[i]!
+  }
+  return item.plats
+}
+
 /**
  * Combines every classification primitive into one row per item: varuklass
- * (Pareto across all items' latest month), platsklass (of the item's
- * current location), trend, period-good status, and the resulting signal.
- * Rows are never dropped for zero volume — a location with nothing picked
- * this month is still a real placement to evaluate.
+ * (Pareto across all items' viewed volume — latest month by default),
+ * platsklass (of the item's location as of the viewed period), trend,
+ * period-good status, and the resulting signal. Rows are never dropped for
+ * zero volume — a location with nothing picked this month is still a real
+ * placement to evaluate.
  */
 export function buildResultRows(
   items: ResultItemInput[],
   periodLabels: string[],
   platsklassConfig: PlatsklassConfig,
   config: ResultConfig,
+  viewMode: ResultViewMode = { type: 'latest' },
 ): ResultRow[] {
-  const latestVolumes = items.map((item) => ({
-    id: item.id,
-    volume: item.series[item.series.length - 1] ?? 0,
-  }))
-  const varuklassById = new Map(paretoClassify(latestVolumes, config.pareto).map((r) => [r.id, r.klass]))
+  const viewVolumes = items.map((item) => ({ id: item.id, volume: resolveViewVolume(item.series, viewMode) }))
+  const varuklassById = new Map(paretoClassify(viewVolumes, config.pareto).map((r) => [r.id, r.klass]))
 
   const bestKlassById = new Map(
     computeBestKlassHistory(
@@ -66,17 +104,19 @@ export function buildResultRows(
 
   return items.map((item) => {
     const latestVolume = item.series[item.series.length - 1] ?? 0
+    const viewVolume = resolveViewVolume(item.series, viewMode)
+    const viewPlats = resolveViewPlats(item, viewMode)
     const varuklass = varuklassById.get(item.id) ?? 'C'
     const best = bestKlassById.get(item.id) ?? { bestKlass: 'C' as Klass, bestPeriod: null }
     const trendResult = computeTrend(item.series, config.trend)
     const periodGood = evaluatePeriodGood(item.series, config.periodGood)
-    const platsResult = determinePlatsklass(item.plats, platsklassConfig)
+    const platsResult = determinePlatsklass(viewPlats, platsklassConfig)
     const periodGoodProtected = periodGood.isPeriodGood && best.bestKlass === 'A'
 
     const signal = classifySignal({
       varuklass,
       platsklass: platsResult.klass,
-      latestVolume,
+      latestVolume: viewVolume,
       trend: trendResult.trend,
       isPeriodGood: periodGood.isPeriodGood,
       periodGoodProtected,
@@ -84,9 +124,10 @@ export function buildResultRows(
 
     return {
       id: item.id,
-      plats: item.plats,
+      plats: viewPlats,
       series: item.series,
       latestVolume,
+      viewVolume,
       varuklass,
       platsklass: platsResult.klass,
       platsklassSource: platsResult.source,
@@ -140,6 +181,7 @@ export function groupRawVolumeRows(rows: RawVolumeRow[]): {
   const items: ResultItemInput[] = []
   for (const [id, entry] of byItem) {
     const series = periodLabels.map((p) => entry.volumeByPeriod.get(p) ?? 0)
+    const platsSeries = periodLabels.map((p) => entry.platsByPeriod.get(p) ?? null)
     let plats = ''
     for (let i = periodLabels.length - 1; i >= 0; i--) {
       const p = entry.platsByPeriod.get(periodLabels[i])
@@ -148,7 +190,7 @@ export function groupRawVolumeRows(rows: RawVolumeRow[]): {
         break
       }
     }
-    items.push({ id, plats, series })
+    items.push({ id, plats, series, platsSeries })
   }
 
   return { periodLabels, items }
@@ -177,7 +219,10 @@ function compareResultRows(a: ResultRow, b: ResultRow, column: ResultSortColumn)
     case 'trend':
       return a.trend.localeCompare(b.trend)
     case 'latestVolume':
-      return a.latestVolume - b.latestVolume
+      // Sorts on the volume actually shown for the active view (a single
+      // picked month, the average, or the true latest month by default),
+      // not always the true latest — the column's meaning follows the view.
+      return a.viewVolume - b.viewVolume
   }
 }
 
