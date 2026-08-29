@@ -5,7 +5,7 @@ månad, klassar varor och lagerplatser i A/B/C, och pekar ut placeringar som är
 
 ## Stack
 
-Vite + React + TypeScript + Supabase (Postgres, RLS, magic-link auth). Domänlogik i `src/lib/` (ren, testad —
+Vite + React + TypeScript + Supabase (Postgres, RLS, e-post+lösenord-auth). Domänlogik i `src/lib/` (ren, testad —
 se `src/lib/__tests__/`), data-hooks i `src/hooks/`, UI i `src/components/`.
 
 ## Utveckling
