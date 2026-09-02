@@ -158,6 +158,14 @@ export interface RawVolumeRow {
  * the plats from the latest period THAT ITEM has a row for, not the
  * dataset's latest period overall, since history can be sparse (an item
  * introduced mid-year has no earlier rows at all).
+ *
+ * A physical location holds one article at a time, so when two items both
+ * resolve to the same current plats, the one that claimed it in a LATER
+ * period holds it — the other has been moved away and its old rows are
+ * just history. The displaced item is dropped rather than left sitting on
+ * a location someone else now occupies: where it actually went is unknown
+ * (nothing in the data says), and showing it on a location it no longer
+ * has produces exactly the phantom placements this guards against.
  */
 export function groupRawVolumeRows(rows: RawVolumeRow[]): {
   periodLabels: string[]
@@ -178,20 +186,40 @@ export function groupRawVolumeRows(rows: RawVolumeRow[]): {
     entry.volumeByPeriod.set(row.period, row.volume)
   }
 
-  const items: ResultItemInput[] = []
+  const candidates: { item: ResultItemInput; claimedAt: number }[] = []
   for (const [id, entry] of byItem) {
     const series = periodLabels.map((p) => entry.volumeByPeriod.get(p) ?? 0)
     const platsSeries = periodLabels.map((p) => entry.platsByPeriod.get(p) ?? null)
     let plats = ''
+    let claimedAt = -1
     for (let i = periodLabels.length - 1; i >= 0; i--) {
       const p = entry.platsByPeriod.get(periodLabels[i])
       if (p) {
         plats = p
+        claimedAt = i
         break
       }
     }
-    items.push({ id, plats, series, platsSeries })
+    candidates.push({ item: { id, plats, series, platsSeries }, claimedAt })
   }
+
+  // Latest claim wins a contested location; ties (both claimed it in the
+  // same period, which the import's dedupe should already prevent) fall to
+  // the first one seen, so the result stays deterministic either way.
+  const holderByPlats = new Map<string, { item: ResultItemInput; claimedAt: number }>()
+  for (const candidate of candidates) {
+    if (candidate.item.plats === '') continue
+    const current = holderByPlats.get(candidate.item.plats)
+    if (!current || candidate.claimedAt > current.claimedAt) {
+      holderByPlats.set(candidate.item.plats, candidate)
+    }
+  }
+
+  // An item with no location at all never contests anything, so it passes
+  // through untouched — only genuine collisions drop a row.
+  const items = candidates
+    .filter((c) => c.item.plats === '' || holderByPlats.get(c.item.plats) === c)
+    .map((c) => c.item)
 
   return { periodLabels, items }
 }

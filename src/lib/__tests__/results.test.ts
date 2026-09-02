@@ -189,6 +189,40 @@ describe('groupRawVolumeRows', () => {
     })
   })
 
+  it('gives a contested location to the item that claimed it in the later period', () => {
+    // A703546 sat on the location in January and has since been moved away;
+    // 479698 is what the February list puts there. Only 479698 should come
+    // back holding it — a shelf slot holds one article at a time.
+    const rows = [
+      { itemId: 'A703546', plats: 'P1010-06--D-3-', period: '2024-01', volume: 10 },
+      { itemId: '479698', plats: 'P1010-06--D-3-', period: '2024-02', volume: 8 },
+    ]
+    const { items } = groupRawVolumeRows(rows)
+    expect(items.map((i) => i.id)).toEqual(['479698'])
+    expect(items[0].plats).toBe('P1010-06--D-3-')
+  })
+
+  it('keeps a displaced item that has since been given a location of its own', () => {
+    // Same handover, except the newest list also shows where A703546 went.
+    const rows = [
+      { itemId: 'A703546', plats: 'P1010-06--D-3-', period: '2024-01', volume: 10 },
+      { itemId: 'A703546', plats: 'P2020-11--B-1-', period: '2024-02', volume: 4 },
+      { itemId: '479698', plats: 'P1010-06--D-3-', period: '2024-02', volume: 8 },
+    ]
+    const { items } = groupRawVolumeRows(rows)
+    expect(items.find((i) => i.id === 'A703546')!.plats).toBe('P2020-11--B-1-')
+    expect(items.find((i) => i.id === '479698')!.plats).toBe('P1010-06--D-3-')
+  })
+
+  it('leaves items on different locations alone', () => {
+    const rows = [
+      { itemId: 'A1', plats: 'P1', period: '2024-01', volume: 10 },
+      { itemId: 'A2', plats: 'P2', period: '2024-02', volume: 8 },
+    ]
+    const { items } = groupRawVolumeRows(rows)
+    expect(items.map((i) => i.id).sort()).toEqual(['A1', 'A2'])
+  })
+
   it("uses the item's own latest period as its current location, not the dataset's latest period", () => {
     // A1 stopped appearing after 2024-01 (e.g. discontinued) while A2 has 2024-02 data.
     const rows = [
