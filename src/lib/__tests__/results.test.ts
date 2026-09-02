@@ -239,6 +239,36 @@ describe('buildResultRows — placement follows the imported list', () => {
     expect(rows.find((r) => r.id === 'ZERO')!.signal).toBe('ZERO_ON_A')
   })
 
+  it('places a moved item by its most recent picks, not by an empty trailing month', () => {
+    // The real shape of the reported bug: the export covers a month that
+    // hasn't happened yet (all zeros), and a moved article still has a row
+    // for its old location carrying those zeros. Placement has to come from
+    // the last month with actual picks, or the old row wins the tie.
+    const { periodLabels: labels, items } = groupRawVolumeRows([
+      { itemId: 'A703546', plats: 'LOC-A', period: '2026-07', volume: 40 },
+      { itemId: 'A703546', plats: 'LOC-B', period: '2026-06', volume: 25 },
+      { itemId: 'A703546', plats: 'LOC-B', period: '2026-08', volume: 0 },
+      { itemId: '479698', plats: 'LOC-B', period: '2026-07', volume: 30 },
+      { itemId: '479698', plats: 'LOC-B', period: '2026-08', volume: 0 },
+    ])
+    expect(labels[labels.length - 1]).toBe('2026-08')
+    const rows = buildResultRows(items, labels, platsklassConfig, config)
+    expect(rows.find((r) => r.id === 'A703546')!.plats).toBe('LOC-A')
+    expect(rows.find((r) => r.id === '479698')!.plats).toBe('LOC-B')
+  })
+
+  it('still shows an article with no picks at all, so nollvara-on-A survives', () => {
+    const { periodLabels: labels, items } = groupRawVolumeRows([
+      { itemId: 'BIG', plats: 'LOC-B', period: '2026-07', volume: 1000 },
+      { itemId: 'BIG', plats: 'LOC-B', period: '2026-08', volume: 0 },
+      { itemId: 'IDLE', plats: 'LOC-A', period: '2026-07', volume: 0 },
+      { itemId: 'IDLE', plats: 'LOC-A', period: '2026-08', volume: 0 },
+    ])
+    const rows = buildResultRows(items, labels, platsklassConfig, config)
+    expect(rows.find((r) => r.id === 'IDLE')!.plats).toBe('LOC-A')
+    expect(rows.find((r) => r.id === 'IDLE')!.signal).toBe('ZERO_ON_A')
+  })
+
   it('judges a picked past month by that month, not by where things are now', () => {
     const { periodLabels: labels, items } = groupRawVolumeRows([
       { itemId: 'A703546', plats: 'LOC-B', period: '2024-01', volume: 10 },

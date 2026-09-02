@@ -127,12 +127,30 @@ describe('normalizeWideRows', () => {
 })
 
 describe('dedupeVolumeRows', () => {
-  it('keeps the last occurrence when the same vara+period appears twice, e.g. after a mid-period move', () => {
+  it('keeps the row with the most picks when the same vara+period appears twice', () => {
     const rows = [
       { itemId: 'A1', plats: 'OLD-LOC', period: '2024-01', volume: 5 },
       { itemId: 'A1', plats: 'NEW-LOC', period: '2024-01', volume: 12 },
     ]
     expect(dedupeVolumeRows(rows)).toEqual([{ itemId: 'A1', plats: 'NEW-LOC', period: '2024-01', volume: 12 }])
+  })
+
+  it('is not fooled by row order — the picked location wins even when listed first', () => {
+    // A moved article keeps a row for its old location carrying that
+    // month's zeros; the export gives no guarantee which row comes first.
+    const rows = [
+      { itemId: 'A1', plats: 'NEW-LOC', period: '2024-01', volume: 12 },
+      { itemId: 'A1', plats: 'OLD-LOC', period: '2024-01', volume: 0 },
+    ]
+    expect(dedupeVolumeRows(rows)).toEqual([{ itemId: 'A1', plats: 'NEW-LOC', period: '2024-01', volume: 12 }])
+  })
+
+  it('falls back to the last row when both are zero, so the result stays deterministic', () => {
+    const rows = [
+      { itemId: 'A1', plats: 'OLD-LOC', period: '2024-01', volume: 0 },
+      { itemId: 'A1', plats: 'NEW-LOC', period: '2024-01', volume: 0 },
+    ]
+    expect(dedupeVolumeRows(rows)).toEqual([{ itemId: 'A1', plats: 'NEW-LOC', period: '2024-01', volume: 0 }])
   })
 
   it('does not conflate the same vara across different periods, or different varor in the same period', () => {

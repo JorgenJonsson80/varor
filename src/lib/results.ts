@@ -67,18 +67,32 @@ function placementIndex(viewMode: ResultViewMode, periodCount: number): number {
 }
 
 /**
- * The item's plats for the deciding period, or null if it has no row there.
+ * Where the item sits as of the deciding period: the location it was most
+ * recently PICKED FROM, at or before that period. Null when it has no rows
+ * at all up to then, and the item is left out of the results entirely.
  *
- * Null means "not placed in that period" and the item is left out entirely —
- * never carried over from an earlier period. The imported list is the truth
- * about where things are: an item missing from it has been moved or removed,
- * and its old rows are history, not a current location. Carrying them over
- * was what left an article sitting on a slot another article had since
- * taken over.
+ * Picks are what identify the real location. The newest month in a file is
+ * routinely still empty (an export covering through next month, a month
+ * that has barely started), and an item that has moved keeps a row for its
+ * old location carrying that month's zeros — so going by the newest row
+ * alone puts articles back on slots they left. The last month with actual
+ * picks doesn't have that problem.
+ *
+ * An item with no picks anywhere in the window falls back to whatever
+ * location its rows do give, so a genuinely idle article still shows up
+ * (and can still be flagged as a nollvara on an A-plats).
  */
 function resolvePlacement(item: ResultItemInput, index: number): string | null {
   if (!item.platsSeries) return item.plats === '' ? null : item.plats
-  return item.platsSeries[index] ?? null
+
+  const at = Math.min(index, item.platsSeries.length - 1)
+  // Absent from that period's list at all: moved away or gone, not placed.
+  if (at < 0 || !item.platsSeries[at]) return null
+
+  for (let i = at; i >= 0; i--) {
+    if (item.platsSeries[i] && (item.series[i] ?? 0) > 0) return item.platsSeries[i]!
+  }
+  return item.platsSeries[at]
 }
 
 /**
