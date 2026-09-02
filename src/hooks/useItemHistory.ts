@@ -60,5 +60,21 @@ export function useItemHistory() {
     reload()
   }, [reload])
 
-  return { rows, loading, error, progress, reload }
+  /**
+   * Removes every volume row for one period. Used to clear out junk periods
+   * — a column that wasn't recognized as a month keeps its raw header as
+   * the period name, so a stray "Försäljning April" ends up looking like a
+   * period, and sorts after every real one since letters beat digits.
+   * Placements live on vp_items and are unaffected.
+   */
+  const deletePeriod = useCallback(
+    async (period: string) => {
+      const { error } = await supabase.from('vp_item_monthly_volume').delete().eq('period', period)
+      if (error) throw new Error(error.message)
+      await reload()
+    },
+    [reload],
+  )
+
+  return { rows, loading, error, progress, reload, deletePeriod }
 }

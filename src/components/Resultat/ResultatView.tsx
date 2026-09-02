@@ -15,6 +15,7 @@ import type { SignalType } from '../../lib/signals'
 import { ImportPlockstatistik } from '../Plockstatistik/ImportPlockstatistik'
 import { Sparkline } from './Sparkline'
 import { SummaryPanel } from './SummaryPanel'
+import { ManagePeriods, type PeriodSummary } from './ManagePeriods'
 import './Resultat.css'
 
 const SIGNAL_LABELS: Record<SignalType, string> = {
@@ -64,6 +65,7 @@ export function ResultatView() {
     error: historyError,
     progress: historyProgress,
     reload,
+    deletePeriod,
   } = useItemHistory()
 
   const [viewSelection, setViewSelection] = useState<'latest' | 'average' | string>('latest')
@@ -172,6 +174,12 @@ export function ResultatView() {
     [filteredRows, sort],
   )
 
+  const periodSummaries: PeriodSummary[] = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const row of historyRows) counts.set(row.period, (counts.get(row.period) ?? 0) + 1)
+    return periodLabels.map((period) => ({ period, rows: counts.get(period) ?? 0 }))
+  }, [historyRows, periodLabels])
+
   const volumeColumnLabel =
     viewSelection === 'latest'
       ? 'Senaste'
@@ -205,6 +213,15 @@ export function ResultatView() {
         <p className="hint">Ingen plockstatistik importerad ännu — börja med importen ovan.</p>
       ) : (
         <>
+          <ManagePeriods
+            periods={periodSummaries}
+            formatPeriod={formatPeriodLabel}
+            onDelete={async (period) => {
+              await deletePeriod(period)
+              if (viewSelection === period) setViewSelection('latest')
+            }}
+          />
+
           <SummaryPanel rows={allRows} activeKlassFilter={klassFilter} onSelectKlassCell={handleSelectKlassCell} />
 
           <div className="resultat-controls">

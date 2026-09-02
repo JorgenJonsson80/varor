@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { parseSpreadsheetFile } from '../../lib/fileParsing'
-import { guessMonthColumns, normalizeLongRows, normalizeWideRows } from '../../lib/history'
+import { guessMonthColumns, normalizeLongRows, normalizeWideRows, parseMonthColumn } from '../../lib/history'
 import { usePlockstatistikImport } from '../../hooks/usePlockstatistikImport'
 
 type Format = 'wide' | 'long'
@@ -46,6 +46,15 @@ export function ImportPlockstatistik({ onImported }: Props) {
   const otherColumns = useMemo(
     () => columns.filter((c) => c !== itemColumn && c !== platsColumn),
     [columns, itemColumn, platsColumn],
+  )
+
+  // A selected column that isn't recognized as a month is imported under its
+  // raw header as the period name — and since periods sort as text, letters
+  // land after every real month, so it poses as the newest period. Easier to
+  // catch here than to clean out afterwards.
+  const unrecognizedMonthColumns = useMemo(
+    () => monthColumns.filter((c) => parseMonthColumn(c) === null),
+    [monthColumns],
   )
 
   function toggleMonthColumn(column: string) {
@@ -179,6 +188,17 @@ export function ImportPlockstatistik({ onImported }: Props) {
                 </select>
               </label>
             </div>
+          )}
+
+          {format === 'wide' && unrecognizedMonthColumns.length > 0 && (
+            <p className="import-warning">
+              {unrecognizedMonthColumns.length === 1 ? 'Kolumnen' : 'Kolumnerna'}{' '}
+              <strong>{unrecognizedMonthColumns.join(', ')}</strong> tolkas inte som{' '}
+              {unrecognizedMonthColumns.length === 1 ? 'en månad' : 'månader'} och importeras då som{' '}
+              {unrecognizedMonthColumns.length === 1 ? 'en egen period' : 'egna perioder'} med kolumnnamnet.
+              Sådana perioder sorteras efter alla riktiga månader och stör analysen — avmarkera{' '}
+              {unrecognizedMonthColumns.length === 1 ? 'den' : 'dem'} om det inte är avsiktligt.
+            </p>
           )}
 
           <button type="button" disabled={!canImport || busy} onClick={handleImport}>
