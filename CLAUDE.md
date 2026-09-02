@@ -35,6 +35,9 @@ PapaParse (CSV) + SheetJS `xlsx` för filimport. GitHub Actions + GitHub Pages f
     OFFSET blir dyrare ju djupare in man kommer). Keyset-cursorn är den enda lösning som visat sig
     hålla.
   - `newitems.ts` — proxy-klassificering för nya varor utan egen historik (ATC-5 + förpackningsstorlek)
+  - `history.ts` — filformat-tolkning (brett/långt, månadskolumn-igenkänning) plus
+    `resolveImportedPlacements` (var varje vara ligger enligt den inskickade filen) och
+    `dedupeVolumeRows` (en rad per vara+månad, den med flest plock vinner)
 - `src/hooks/` — en hook per Supabase-tabell/koncept, delade via `src/context/AppDataContext.tsx`
   så config/regler/platser hämtas en gång och delas mellan Resultat- och Platskarta-vyn.
 - `src/components/Platskarta/` — adminvy: importera platslista, hantera platsregler (positions- och
@@ -79,7 +82,10 @@ lagrets faktiska platser/artiklar, och några konfigvärden. Så här sätter du
 
 1. **Nytt Supabase-projekt** (egen databas — dela inte projekt mellan kunder). Kopiera
    `.env.example` → `.env`, fyll i den nya projektets URL + anon key (Project Settings → API).
-2. **Kör migrationerna** i `supabase/migrations/` i filnamnsordning via SQL editor.
+2. **Kör migrationerna** i `supabase/migrations/` i filnamnsordning via SQL editor. Om appen sedan
+   klagar på att en kolumn inte finns (`Could not find the '...' column ... in the schema cache`) är
+   det PostgREST-cachen som hänger kvar, inte migrationen som saknas: kör `notify pgrst, 'reload
+   schema';`.
 3. **Sätt första admin-användaren**: `insert into vp_allowed_users (...)` + `encrypted_password`
    enligt ovan — annars kan ingen logga in (signup är blockerad by design).
 4. **Anpassa `vp_location_config`** till kundens verklighet innan något annat görs:
@@ -90,9 +96,26 @@ lagrets faktiska platser/artiklar, och några konfigvärden. Så här sätter du
 5. **Bygg platskartan för det nya lagret**: importera platslistan (Platskarta-vyn), sätt upp
    positions- och/eller prefix-regler utifrån hur *den kundens* platskoder är uppbyggda — detta är
    inte kod, det är lagerkunskap som bara kunden har. Fråga, gissa inte.
-6. **Deploy**: forka/skapa nytt repo, sätt repo-secrets `VITE_SUPABASE_URL` +
+6. **Kolla att kundens plockstatistik har rätt form** innan första importen. Varje rad måste bära
+   *både* varunummer och lagerplats — plockstatistiken är källan till var varorna ligger, det finns
+   inget separat placeringsregister. Två format stöds:
+   - **Brett**: en rad per vara+plats, en kolumn per månad. Vanligast från WMS-exporter. En vara som
+     flyttat får flera rader, en per plats den plockats från — det är meningen, importen reder ut
+     vilken som gäller.
+   - **Långt**: en rad per vara+plats+period, med separat antalskolumn.
+
+   Månadskolumner känns igen automatiskt ("Gissa"-knappen) i de flesta format (`202601`, `2026-01`,
+   `jan-26`, `januari 2026`). En kolumn som *inte* tolkas som månad släpps igenom med sitt råa namn
+   som periodnamn — välj alltså aldrig en summa- eller totalkolumn som månadskolumn.
+7. **Importera plockstatistiken** (Resultat-vyn). Det är den här importen som skriver ner var varje
+   vara ligger, så innan den körts finns inga placeringar att analysera.
+8. **Deploy**: forka/skapa nytt repo, sätt repo-secrets `VITE_SUPABASE_URL` +
    `VITE_SUPABASE_ANON_KEY`, GitHub Pages-workflowen (`.github/workflows/deploy.yml`) sköter resten
    på push till `main`.
+
+Att säga till kunden direkt: **täcker filen en påbörjad månad** (t.ex. exporterad mitt i månaden)
+blir vyn "Senaste månaden" tunn — varuklassen räknas då på några få dagars plock och hoppar runt.
+Använd senaste *hela* månaden eller "Snitt" för den riktiga analysen.
 
 ## Lärdomar värda att komma ihåg
 
