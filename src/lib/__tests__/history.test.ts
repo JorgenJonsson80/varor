@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildSeriesFromWide,
+  dedupeVolumeRows,
   groupLongFormat,
   guessMonthColumns,
   normalizeLongRows,
@@ -122,6 +123,33 @@ describe('normalizeWideRows', () => {
     ]
     const result = normalizeWideRows(rows, 'vara', 'plats', ['jan-24'])
     expect(result).toEqual([{ itemId: 'A2', plats: 'P1', period: '2024-01', volume: 10 }])
+  })
+})
+
+describe('dedupeVolumeRows', () => {
+  it('keeps the last occurrence when the same vara+period appears twice, e.g. after a mid-period move', () => {
+    const rows = [
+      { itemId: 'A1', plats: 'OLD-LOC', period: '2024-01', volume: 5 },
+      { itemId: 'A1', plats: 'NEW-LOC', period: '2024-01', volume: 12 },
+    ]
+    expect(dedupeVolumeRows(rows)).toEqual([{ itemId: 'A1', plats: 'NEW-LOC', period: '2024-01', volume: 12 }])
+  })
+
+  it('does not conflate the same vara across different periods, or different varor in the same period', () => {
+    const rows = [
+      { itemId: 'A1', plats: 'P1', period: '2024-01', volume: 5 },
+      { itemId: 'A1', plats: 'P1', period: '2024-02', volume: 6 },
+      { itemId: 'A2', plats: 'P2', period: '2024-01', volume: 7 },
+    ]
+    expect(dedupeVolumeRows(rows)).toEqual(rows)
+  })
+
+  it('leaves a list with no duplicates untouched, same order', () => {
+    const rows = [
+      { itemId: 'A1', plats: 'P1', period: '2024-01', volume: 5 },
+      { itemId: 'A2', plats: 'P2', period: '2024-01', volume: 7 },
+    ]
+    expect(dedupeVolumeRows(rows)).toEqual(rows)
   })
 })
 

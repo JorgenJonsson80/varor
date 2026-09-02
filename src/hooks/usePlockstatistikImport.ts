@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import type { PlockstatistikRow } from '../lib/history'
+import { dedupeVolumeRows, type PlockstatistikRow } from '../lib/history'
 
 const CHUNK_SIZE = 1000
 const CONCURRENCY = 6
@@ -52,7 +52,13 @@ export interface ImportResult {
 export function usePlockstatistikImport() {
   const [progress, setProgress] = useState<ImportProgress | null>(null)
 
-  const importRows = useCallback(async (rows: PlockstatistikRow[]): Promise<ImportResult> => {
+  const importRows = useCallback(async (rawRows: PlockstatistikRow[]): Promise<ImportResult> => {
+    // A wide-format export has one row per vara+plats — an item that moved
+    // location during the file's date range can appear twice for the same
+    // month column, once under each location. Deduping before anything is
+    // sent also prevents the two from landing in different upsert chunks
+    // and racing each other, which made the surviving plats nondeterministic.
+    const rows = dedupeVolumeRows(rawRows)
     const itemIds = Array.from(new Set(rows.map((r) => r.itemId)))
     const platser = Array.from(new Set(rows.map((r) => r.plats)))
 
