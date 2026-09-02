@@ -53,6 +53,8 @@ Schema som SQL-migrationer i `supabase/migrations/`, körs i filnamnsordning via
 - `vp_locations` — fysiska platser + eventuell manuell platsklass-tagg.
 - `vp_platsklass_rules` / `vp_platsklass_prefix_rules` — positions- respektive prefix-baserade regler.
 - `vp_items` / `vp_item_monthly_volume` — varor + månadsvis plockvolym per plats.
+  **`vp_items.current_plats` + `placement_batch` är sanningen om var en vara ligger.** Härled
+  aldrig placeringen ur `vp_item_monthly_volume` — se lärdomen nedan.
 - `vp_allowed_users` + `vp_is_allowed_user()` — **åtkomst-allowlist**. Detta Supabase-projekt delas
   med andra lagerappar (samma organisation/projekt), så varje tabells RLS-policy måste gå via
   `vp_is_allowed_user()`, en `BEFORE INSERT`-trigger på `auth.users` blockerar signup för icke-
@@ -94,6 +96,15 @@ lagrets faktiska platser/artiklar, och några konfigvärden. Så här sätter du
 
 ## Lärdomar värda att komma ihåg
 
+- **Placering skrivs ner vid import, den härleds aldrig.** `vp_item_monthly_volume` växer bara och
+  städas aldrig, så rader från en gammal import överlever listan som skulle ersätta dem — kapar man
+  månader ur filen blir en tidigare imports rader plötsligt de nyaste. Och i en påbörjad månad står
+  de flesta varor på noll, så en flyttad varas gamla och nya rad blir oavgjort och radordningen i
+  filen får bestämma. Tre olika härledningsregler testades och föll på samma sak. Nu skriver
+  importen `current_plats` per vara (platsen med plock i den nyaste månaden filen täcker) plus en
+  `placement_batch`-stämpel gemensam för hela importen; varor med äldre stämpel var inte med i
+  senaste listan och räknas inte som placerade. Att välja en gammal månad i månadsväljaren läser
+  fortfarande historiken — det är enda stället historiken får styra platsen.
 - **Egress/anropskvot är en delad resurs** när flera appar sitter i samma Supabase-organisation —
   en enskild apps ineffektiva hämtning (t.ex. full tabell hämtad separat av varje flik istället för
   delad) kan slå ut *alla* appar i organisationen med en Fair Use-spärr, inte bara sin egen app.
