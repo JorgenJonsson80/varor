@@ -269,6 +269,43 @@ describe('buildResultRows — placement follows the imported list', () => {
     expect(rows.find((r) => r.id === 'IDLE')!.signal).toBe('ZERO_ON_A')
   })
 
+  it('lets the imported placement override whatever the history rows say', () => {
+    // The whole point: history in the database still has A703546 on LOC-B,
+    // and the newest rows there are from an older import. The list that was
+    // imported last says otherwise, and it wins.
+    const { periodLabels: labels, items } = groupRawVolumeRows([
+      { itemId: 'A703546', plats: 'LOC-B', period: '2026-07', volume: 40 },
+      { itemId: '479698', plats: 'LOC-C', period: '2026-07', volume: 30 },
+    ])
+    const placements = new Map([
+      ['A703546', 'LOC-A'],
+      ['479698', 'LOC-B'],
+    ])
+    const rows = buildResultRows(items, labels, platsklassConfig, config, { type: 'latest' }, placements)
+    expect(rows.find((r) => r.id === 'A703546')!.plats).toBe('LOC-A')
+    expect(rows.find((r) => r.id === '479698')!.plats).toBe('LOC-B')
+  })
+
+  it('drops an article the latest import left out, however much history it has', () => {
+    const { periodLabels: labels, items } = groupRawVolumeRows([
+      { itemId: 'GONE', plats: 'LOC-B', period: '2026-07', volume: 40 },
+      { itemId: 'STILL-HERE', plats: 'LOC-A', period: '2026-07', volume: 30 },
+    ])
+    const placements = new Map([['STILL-HERE', 'LOC-A']])
+    const rows = buildResultRows(items, labels, platsklassConfig, config, { type: 'latest' }, placements)
+    expect(rows.map((r) => r.id)).toEqual(['STILL-HERE'])
+  })
+
+  it('still reads a past month from history, not from the current placement', () => {
+    const { periodLabels: labels, items } = groupRawVolumeRows([
+      { itemId: 'A703546', plats: 'LOC-B', period: '2026-06', volume: 40 },
+      { itemId: 'A703546', plats: 'LOC-A', period: '2026-07', volume: 40 },
+    ])
+    const placements = new Map([['A703546', 'LOC-A']])
+    const rows = buildResultRows(items, labels, platsklassConfig, config, { type: 'period', index: 0 }, placements)
+    expect(rows[0].plats).toBe('LOC-B')
+  })
+
   it('judges a picked past month by that month, not by where things are now', () => {
     const { periodLabels: labels, items } = groupRawVolumeRows([
       { itemId: 'A703546', plats: 'LOC-B', period: '2024-01', volume: 10 },

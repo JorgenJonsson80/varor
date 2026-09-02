@@ -3,12 +3,14 @@ import { useLocationConfig } from '../hooks/useLocationConfig'
 import { usePlatsklassRules } from '../hooks/usePlatsklassRules'
 import { usePrefixRules } from '../hooks/usePrefixRules'
 import { useLocations } from '../hooks/useLocations'
+import { useItemPlacements } from '../hooks/useItemPlacements'
 
 interface AppDataContextValue {
   configData: ReturnType<typeof useLocationConfig>
   rulesData: ReturnType<typeof usePlatsklassRules>
   prefixRulesData: ReturnType<typeof usePrefixRules>
   locationsData: ReturnType<typeof useLocations>
+  placementsData: ReturnType<typeof useItemPlacements>
 }
 
 const AppDataContext = createContext<AppDataContextValue | null>(null)
@@ -26,9 +28,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const rulesData = usePlatsklassRules()
   const prefixRulesData = usePrefixRules()
   const locationsData = useLocations()
+  const placementsData = useItemPlacements()
 
   return (
-    <AppDataContext.Provider value={{ configData, rulesData, prefixRulesData, locationsData }}>
+    <AppDataContext.Provider value={{ configData, rulesData, prefixRulesData, locationsData, placementsData }}>
       {children}
     </AppDataContext.Provider>
   )

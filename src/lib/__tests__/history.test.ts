@@ -8,6 +8,7 @@ import {
   normalizeMonthLabel,
   normalizeWideRows,
   parseMonthColumn,
+  resolveImportedPlacements,
   periodCutoff,
   toNumber,
 } from '../history'
@@ -207,5 +208,50 @@ describe('periodCutoff', () => {
     // exist — without resetting the day first, JS Date rolls that forward
     // to May 1, silently cancelling the subtraction out entirely.
     expect(periodCutoff(1, new Date(2026, 4, 31))).toBe('2026-04')
+  })
+})
+
+describe('resolveImportedPlacements', () => {
+  it('places an article where the newest month with picks puts it, not where an old row does', () => {
+    // A703546 moved: its old location still has a row, carrying zeros for
+    // the months since the move. 479698 took the slot it left.
+    const rows = [
+      { itemId: 'A703546', plats: 'OLD-LOC', period: '2026-06', volume: 25 },
+      { itemId: 'A703546', plats: 'OLD-LOC', period: '2026-07', volume: 0 },
+      { itemId: 'A703546', plats: 'NEW-LOC', period: '2026-07', volume: 40 },
+      { itemId: '479698', plats: 'OLD-LOC', period: '2026-07', volume: 30 },
+    ]
+    const placements = resolveImportedPlacements(rows)
+    expect(placements.find((p) => p.itemId === 'A703546')!.plats).toBe('NEW-LOC')
+    expect(placements.find((p) => p.itemId === '479698')!.plats).toBe('OLD-LOC')
+  })
+
+  it('walks back past a part-way-through month where nothing has been picked yet', () => {
+    const rows = [
+      { itemId: 'A1', plats: 'OLD-LOC', period: '2026-06', volume: 12 },
+      { itemId: 'A1', plats: 'NEW-LOC', period: '2026-07', volume: 30 },
+      { itemId: 'A1', plats: 'OLD-LOC', period: '2026-08', volume: 0 },
+      { itemId: 'A1', plats: 'NEW-LOC', period: '2026-08', volume: 0 },
+    ]
+    expect(resolveImportedPlacements(rows)[0].plats).toBe('NEW-LOC')
+  })
+
+  it('still gives an article with no picks anywhere a placement', () => {
+    const rows = [
+      { itemId: 'IDLE', plats: 'LOC-A', period: '2026-07', volume: 0 },
+      { itemId: 'IDLE', plats: 'LOC-A', period: '2026-08', volume: 0 },
+    ]
+    expect(resolveImportedPlacements(rows)).toEqual([{ itemId: 'IDLE', plats: 'LOC-A' }])
+  })
+
+  it('gives one placement per article', () => {
+    const rows = [
+      { itemId: 'A1', plats: 'P1', period: '2026-07', volume: 5 },
+      { itemId: 'A1', plats: 'P2', period: '2026-07', volume: 9 },
+      { itemId: 'A2', plats: 'P3', period: '2026-07', volume: 1 },
+    ]
+    const placements = resolveImportedPlacements(rows)
+    expect(placements).toHaveLength(2)
+    expect(placements.find((p) => p.itemId === 'A1')!.plats).toBe('P2')
   })
 })

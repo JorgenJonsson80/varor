@@ -197,6 +197,70 @@ export function normalizeLongRows(
   return result
 }
 
+export interface ItemPlacement {
+  itemId: string
+  plats: string
+}
+
+/**
+ * Works out where each article currently sits, straight from the imported
+ * list — the file is the authority on placement, so this is what gets
+ * written down rather than inferred from history later.
+ *
+ * A wide-format export has one row per vara+plats, so an article that has
+ * moved appears once per location it has been picked from. The one it sits
+ * on now is the one with picks in the newest month the file covers; when
+ * that month is only part-way through, most articles have no picks in it
+ * at all, so the comparison walks back month by month until something
+ * separates them. An article never picked anywhere in the file falls back
+ * to its last listed location, so an idle article still has a placement.
+ */
+export function resolveImportedPlacements(rows: PlockstatistikRow[]): ItemPlacement[] {
+  const periods = Array.from(new Set(rows.map((r) => r.period))).sort()
+
+  const byItem = new Map<string, Map<string, Map<string, number>>>()
+  for (const row of rows) {
+    let perPlats = byItem.get(row.itemId)
+    if (!perPlats) {
+      perPlats = new Map()
+      byItem.set(row.itemId, perPlats)
+    }
+    let perPeriod = perPlats.get(row.plats)
+    if (!perPeriod) {
+      perPeriod = new Map()
+      perPlats.set(row.plats, perPeriod)
+    }
+    perPeriod.set(row.period, (perPeriod.get(row.period) ?? 0) + row.volume)
+  }
+
+  const placements: ItemPlacement[] = []
+  for (const [itemId, perPlats] of byItem) {
+    const platser = Array.from(perPlats.keys())
+    let winner = platser[platser.length - 1]
+
+    for (let i = periods.length - 1; i >= 0; i--) {
+      const period = periods[i]
+      let best = ''
+      let bestVolume = 0
+      for (const plats of platser) {
+        const volume = perPlats.get(plats)?.get(period) ?? 0
+        if (volume > bestVolume) {
+          best = plats
+          bestVolume = volume
+        }
+      }
+      if (best !== '') {
+        winner = best
+        break
+      }
+    }
+
+    placements.push({ itemId, plats: winner })
+  }
+
+  return placements
+}
+
 /**
  * Returns the 'YYYY-MM' period `monthsBack` months before `referenceDate`
  * — used to bound a rolling fetch window. The day-of-month is reset to 1

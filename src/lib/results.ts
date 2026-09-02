@@ -82,7 +82,17 @@ function placementIndex(viewMode: ResultViewMode, periodCount: number): number {
  * location its rows do give, so a genuinely idle article still shows up
  * (and can still be flagged as a nollvara on an A-plats).
  */
-function resolvePlacement(item: ResultItemInput, index: number): string | null {
+function resolvePlacement(
+  item: ResultItemInput,
+  index: number,
+  viewMode: ResultViewMode,
+  placements?: Map<string, string>,
+): string | null {
+  // Where things are NOW is not inferred at all — it is what the most
+  // recent import wrote down. An article that list didn't cover has no
+  // placement and drops out, however much history it still has.
+  if (placements && viewMode.type !== 'period') return placements.get(item.id) ?? null
+
   if (!item.platsSeries) return item.plats === '' ? null : item.plats
 
   const at = Math.min(index, item.platsSeries.length - 1)
@@ -110,11 +120,12 @@ export function buildResultRows(
   platsklassConfig: PlatsklassConfig,
   config: ResultConfig,
   viewMode: ResultViewMode = { type: 'latest' },
+  placements?: Map<string, string>,
 ): ResultRow[] {
   const index = placementIndex(viewMode, periodLabels.length)
   const placed: { item: ResultItemInput; plats: string }[] = []
   for (const item of items) {
-    const plats = resolvePlacement(item, index)
+    const plats = resolvePlacement(item, index, viewMode, placements)
     if (plats !== null) placed.push({ item, plats })
   }
 

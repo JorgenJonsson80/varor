@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { dedupeVolumeRows, type PlockstatistikRow } from '../lib/history'
+import { dedupeVolumeRows, resolveImportedPlacements, type PlockstatistikRow } from '../lib/history'
 
 const CHUNK_SIZE = 1000
 const CONCURRENCY = 6
@@ -38,7 +38,7 @@ async function chunkedUpsert(
 }
 
 export interface ImportProgress {
-  stage: 'items' | 'locations' | 'volymer'
+  stage: 'items' | 'locations' | 'placeringar' | 'volymer'
   done: number
   total: number
 }
@@ -77,6 +77,23 @@ export function usePlockstatistikImport() {
       platser.map((plats) => ({ plats })),
       { onConflict: 'plats', ignoreDuplicates: true },
       (done, total) => setProgress({ stage: 'locations', done, total }),
+    )
+
+    // Placement is written down from the list rather than inferred from the
+    // volume rows later: the file says where each article is, and this is
+    // the only thing that says so. One stamp for the whole import marks
+    // which articles this list covered — anything still carrying an older
+    // stamp was left out of it and counts as no longer placed.
+    const placementBatch = new Date().toISOString()
+    await chunkedUpsert(
+      'vp_items',
+      resolveImportedPlacements(rows).map((p) => ({
+        id: p.itemId,
+        current_plats: p.plats,
+        placement_batch: placementBatch,
+      })),
+      { onConflict: 'id' },
+      (done, total) => setProgress({ stage: 'placeringar', done, total }),
     )
 
     // Volume rows DO overwrite on conflict — re-importing a corrected

@@ -52,11 +52,12 @@ function formatPeriodLabel(period: string): string {
 }
 
 export function ResultatView() {
-  const { configData, rulesData, prefixRulesData, locationsData } = useAppData()
+  const { configData, rulesData, prefixRulesData, locationsData, placementsData } = useAppData()
   const { config, loading: configLoading } = configData
   const { rules, loading: rulesLoading } = rulesData
   const { prefixRules, loading: prefixRulesLoading } = prefixRulesData
   const { locations, loading: locationsLoading } = locationsData
+  const { placements, loading: placementsLoading, reload: reloadPlacements } = placementsData
   const {
     rows: historyRows,
     loading: historyLoading,
@@ -93,7 +94,8 @@ export function ResultatView() {
     setPage(0)
   }
 
-  const loading = configLoading || rulesLoading || prefixRulesLoading || locationsLoading || historyLoading
+  const loading =
+    configLoading || rulesLoading || prefixRulesLoading || locationsLoading || placementsLoading || historyLoading
 
   const manualMap = useMemo(() => {
     const map: Record<string, Klass> = {}
@@ -142,8 +144,15 @@ export function ResultatView() {
 
   const allRows: ResultRow[] = useMemo(() => {
     if (historyRows.length === 0) return []
-    return buildResultRows(grouped.items, periodLabels, platsklassConfig, resultConfig, viewMode)
-  }, [historyRows, grouped, periodLabels, platsklassConfig, resultConfig, viewMode])
+    return buildResultRows(
+      grouped.items,
+      periodLabels,
+      platsklassConfig,
+      resultConfig,
+      viewMode,
+      placements.byItem.size > 0 ? placements.byItem : undefined,
+    )
+  }, [historyRows, grouped, periodLabels, platsklassConfig, resultConfig, viewMode, placements])
 
   const filteredRows = useMemo(() => {
     const needle = textFilter.trim().toLowerCase()
@@ -185,7 +194,12 @@ export function ResultatView() {
 
   return (
     <div className="resultat">
-      <ImportPlockstatistik onImported={reload} />
+      <ImportPlockstatistik
+        onImported={() => {
+          reload()
+          reloadPlacements()
+        }}
+      />
 
       {historyRows.length === 0 ? (
         <p className="hint">Ingen plockstatistik importerad ännu — börja med importen ovan.</p>
