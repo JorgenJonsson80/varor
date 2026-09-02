@@ -58,31 +58,37 @@ function resolveViewVolume(series: number[], viewMode: ResultViewMode): number {
 }
 
 /**
- * For a specific viewed period, uses the plats the item had THAT month.
- * When the item has no row for that exact month (sparse history), falls
- * back to the closest earlier known location — it hasn't moved since —
- * and only looks forward if it has no history at or before that point
- * (e.g. the item didn't exist yet).
+ * Which period decides where an item sits: the one being viewed, or the
+ * newest one for the latest/average views (an average is still evaluated
+ * against where the item is now).
  */
-function resolveViewPlats(item: ResultItemInput, viewMode: ResultViewMode): string {
-  if (viewMode.type !== 'period' || !item.platsSeries) return item.plats
-  const { platsSeries } = item
-  for (let i = viewMode.index; i >= 0; i--) {
-    if (platsSeries[i]) return platsSeries[i]!
-  }
-  for (let i = viewMode.index + 1; i < platsSeries.length; i++) {
-    if (platsSeries[i]) return platsSeries[i]!
-  }
-  return item.plats
+function placementIndex(viewMode: ResultViewMode, periodCount: number): number {
+  return viewMode.type === 'period' ? viewMode.index : periodCount - 1
+}
+
+/**
+ * The item's plats for the deciding period, or null if it has no row there.
+ *
+ * Null means "not placed in that period" and the item is left out entirely —
+ * never carried over from an earlier period. The imported list is the truth
+ * about where things are: an item missing from it has been moved or removed,
+ * and its old rows are history, not a current location. Carrying them over
+ * was what left an article sitting on a slot another article had since
+ * taken over.
+ */
+function resolvePlacement(item: ResultItemInput, index: number): string | null {
+  if (!item.platsSeries) return item.plats === '' ? null : item.plats
+  return item.platsSeries[index] ?? null
 }
 
 /**
  * Combines every classification primitive into one row per item: varuklass
  * (Pareto across all items' viewed volume — latest month by default),
- * platsklass (of the item's location as of the viewed period), trend,
+ * platsklass (of the item's location in the deciding period), trend,
  * period-good status, and the resulting signal. Rows are never dropped for
  * zero volume — a location with nothing picked this month is still a real
- * placement to evaluate.
+ * placement to evaluate — but an item with no row at all for the deciding
+ * period is: it isn't placed anywhere then, so there is nothing to judge.
  */
 export function buildResultRows(
   items: ResultItemInput[],
@@ -91,21 +97,30 @@ export function buildResultRows(
   config: ResultConfig,
   viewMode: ResultViewMode = { type: 'latest' },
 ): ResultRow[] {
-  const viewVolumes = items.map((item) => ({ id: item.id, volume: resolveViewVolume(item.series, viewMode) }))
+  const index = placementIndex(viewMode, periodLabels.length)
+  const placed: { item: ResultItemInput; plats: string }[] = []
+  for (const item of items) {
+    const plats = resolvePlacement(item, index)
+    if (plats !== null) placed.push({ item, plats })
+  }
+
+  // Pareto runs over the items actually placed in that period — an article
+  // that has left the warehouse shouldn't shift the A/B/C cut for the ones
+  // still in it.
+  const viewVolumes = placed.map(({ item }) => ({ id: item.id, volume: resolveViewVolume(item.series, viewMode) }))
   const varuklassById = new Map(paretoClassify(viewVolumes, config.pareto).map((r) => [r.id, r.klass]))
 
   const bestKlassById = new Map(
     computeBestKlassHistory(
-      items.map((item) => ({ id: item.id, series: item.series })),
+      placed.map(({ item }) => ({ id: item.id, series: item.series })),
       periodLabels,
       config.pareto,
     ).map((r) => [r.id, r]),
   )
 
-  return items.map((item) => {
+  return placed.map(({ item, plats: viewPlats }) => {
     const latestVolume = item.series[item.series.length - 1] ?? 0
     const viewVolume = resolveViewVolume(item.series, viewMode)
-    const viewPlats = resolveViewPlats(item, viewMode)
     const varuklass = varuklassById.get(item.id) ?? 'C'
     const best = bestKlassById.get(item.id) ?? { bestKlass: 'C' as Klass, bestPeriod: null }
     const trendResult = computeTrend(item.series, config.trend)
@@ -159,13 +174,9 @@ export interface RawVolumeRow {
  * dataset's latest period overall, since history can be sparse (an item
  * introduced mid-year has no earlier rows at all).
  *
- * A physical location holds one article at a time, so when two items both
- * resolve to the same current plats, the one that claimed it in a LATER
- * period holds it — the other has been moved away and its old rows are
- * just history. The displaced item is dropped rather than left sitting on
- * a location someone else now occupies: where it actually went is unknown
- * (nothing in the data says), and showing it on a location it no longer
- * has produces exactly the phantom placements this guards against.
+ * `plats` here is only a convenience for callers that don't track periods;
+ * buildResultRows decides placement from platsSeries for the period being
+ * viewed, and leaves out items that have no row there at all.
  */
 export function groupRawVolumeRows(rows: RawVolumeRow[]): {
   periodLabels: string[]
@@ -186,40 +197,14 @@ export function groupRawVolumeRows(rows: RawVolumeRow[]): {
     entry.volumeByPeriod.set(row.period, row.volume)
   }
 
-  const candidates: { item: ResultItemInput; claimedAt: number }[] = []
+  const latestPeriod = periodLabels[periodLabels.length - 1]
+  const items: ResultItemInput[] = []
   for (const [id, entry] of byItem) {
     const series = periodLabels.map((p) => entry.volumeByPeriod.get(p) ?? 0)
     const platsSeries = periodLabels.map((p) => entry.platsByPeriod.get(p) ?? null)
-    let plats = ''
-    let claimedAt = -1
-    for (let i = periodLabels.length - 1; i >= 0; i--) {
-      const p = entry.platsByPeriod.get(periodLabels[i])
-      if (p) {
-        plats = p
-        claimedAt = i
-        break
-      }
-    }
-    candidates.push({ item: { id, plats, series, platsSeries }, claimedAt })
+    const plats = (latestPeriod ? entry.platsByPeriod.get(latestPeriod) : undefined) ?? ''
+    items.push({ id, plats, series, platsSeries })
   }
-
-  // Latest claim wins a contested location; ties (both claimed it in the
-  // same period, which the import's dedupe should already prevent) fall to
-  // the first one seen, so the result stays deterministic either way.
-  const holderByPlats = new Map<string, { item: ResultItemInput; claimedAt: number }>()
-  for (const candidate of candidates) {
-    if (candidate.item.plats === '') continue
-    const current = holderByPlats.get(candidate.item.plats)
-    if (!current || candidate.claimedAt > current.claimedAt) {
-      holderByPlats.set(candidate.item.plats, candidate)
-    }
-  }
-
-  // An item with no location at all never contests anything, so it passes
-  // through untouched — only genuine collisions drop a row.
-  const items = candidates
-    .filter((c) => c.item.plats === '' || holderByPlats.get(c.item.plats) === c)
-    .map((c) => c.item)
 
   return { periodLabels, items }
 }

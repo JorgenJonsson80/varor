@@ -121,7 +121,7 @@ describe('buildResultRows — viewMode', () => {
     expect(rows[0]).toMatchObject({ plats: 'LOC-C', platsklass: 'C' })
   })
 
-  it('falls back to the closest known earlier plats when the picked month has no row for the item', () => {
+  it('leaves out an item that has no row in the picked month, rather than carrying a location over', () => {
     const items = [
       {
         id: 'A1',
@@ -131,10 +131,10 @@ describe('buildResultRows — viewMode', () => {
       },
     ]
     const rows = buildResultRows(items, periodLabels, platsklassConfig, config, { type: 'period', index: 1 })
-    expect(rows[0].plats).toBe('LOC-C')
+    expect(rows).toEqual([])
   })
 
-  it('falls back to the closest known later plats when nothing earlier is known (item introduced after this month)', () => {
+  it('leaves out an item that did not exist yet in the picked month', () => {
     const items = [
       {
         id: 'A1',
@@ -144,7 +144,7 @@ describe('buildResultRows — viewMode', () => {
       },
     ]
     const rows = buildResultRows(items, periodLabels, platsklassConfig, config, { type: 'period', index: 0 })
-    expect(rows[0].plats).toBe('LOC-C')
+    expect(rows).toEqual([])
   })
 
   it('classifies "snitt" on the average volume across all periods, not any single month', () => {
@@ -179,60 +179,74 @@ describe('groupRawVolumeRows', () => {
       series: [10, 20],
       platsSeries: ['P1', 'P1'],
     })
-    // A2 has no row for 2024-02 -> volume treated as 0, never dropped, but
-    // its location for that period is genuinely unknown (null), not P2.
+    // A2 has no row for 2024-02 -> volume treated as 0, and its location for
+    // that period is genuinely unknown (null), not carried over from P2.
     expect(items.find((i) => i.id === 'A2')).toEqual({
       id: 'A2',
-      plats: 'P2',
+      plats: '',
       series: [5, 0],
       platsSeries: ['P2', null],
     })
   })
 
-  it('gives a contested location to the item that claimed it in the later period', () => {
-    // A703546 sat on the location in January and has since been moved away;
-    // 479698 is what the February list puts there. Only 479698 should come
-    // back holding it — a shelf slot holds one article at a time.
-    const rows = [
-      { itemId: 'A703546', plats: 'P1010-06--D-3-', period: '2024-01', volume: 10 },
-      { itemId: '479698', plats: 'P1010-06--D-3-', period: '2024-02', volume: 8 },
-    ]
-    const { items } = groupRawVolumeRows(rows)
-    expect(items.map((i) => i.id)).toEqual(['479698'])
-    expect(items[0].plats).toBe('P1010-06--D-3-')
-  })
-
-  it('keeps a displaced item that has since been given a location of its own', () => {
-    // Same handover, except the newest list also shows where A703546 went.
-    const rows = [
-      { itemId: 'A703546', plats: 'P1010-06--D-3-', period: '2024-01', volume: 10 },
-      { itemId: 'A703546', plats: 'P2020-11--B-1-', period: '2024-02', volume: 4 },
-      { itemId: '479698', plats: 'P1010-06--D-3-', period: '2024-02', volume: 8 },
-    ]
-    const { items } = groupRawVolumeRows(rows)
-    expect(items.find((i) => i.id === 'A703546')!.plats).toBe('P2020-11--B-1-')
-    expect(items.find((i) => i.id === '479698')!.plats).toBe('P1010-06--D-3-')
-  })
-
-  it('leaves items on different locations alone', () => {
-    const rows = [
-      { itemId: 'A1', plats: 'P1', period: '2024-01', volume: 10 },
-      { itemId: 'A2', plats: 'P2', period: '2024-02', volume: 8 },
-    ]
-    const { items } = groupRawVolumeRows(rows)
-    expect(items.map((i) => i.id).sort()).toEqual(['A1', 'A2'])
-  })
-
-  it("uses the item's own latest period as its current location, not the dataset's latest period", () => {
-    // A1 stopped appearing after 2024-01 (e.g. discontinued) while A2 has 2024-02 data.
+  it("takes plats from the dataset's latest period, leaving it blank for items absent from it", () => {
+    // A1 stopped appearing after 2024-01 (moved or discontinued) while A2 has
+    // 2024-02 data. A1's old location is history, not where it is now.
     const rows = [
       { itemId: 'A1', plats: 'OLD-LOC', period: '2024-01', volume: 10 },
       { itemId: 'A2', plats: 'P2', period: '2024-01', volume: 5 },
       { itemId: 'A2', plats: 'NEW-LOC', period: '2024-02', volume: 8 },
     ]
     const { items } = groupRawVolumeRows(rows)
-    expect(items.find((i) => i.id === 'A1')!.plats).toBe('OLD-LOC')
+    expect(items.find((i) => i.id === 'A1')!.plats).toBe('')
     expect(items.find((i) => i.id === 'A2')!.plats).toBe('NEW-LOC')
+  })
+})
+
+describe('buildResultRows — placement follows the imported list', () => {
+  it('drops an item that has no row in the latest period, freeing the location for its new occupant', () => {
+    // A703546 sat on the location in January and has since been moved away;
+    // the February list puts 479698 there. Only 479698 should come back — a
+    // shelf slot holds one article at a time, and A703546's old row is history.
+    const { periodLabels: labels, items } = groupRawVolumeRows([
+      { itemId: 'A703546', plats: 'LOC-B', period: '2024-01', volume: 10 },
+      { itemId: '479698', plats: 'LOC-B', period: '2024-02', volume: 8 },
+    ])
+    const rows = buildResultRows(items, labels, platsklassConfig, config)
+    expect(rows.map((r) => r.id)).toEqual(['479698'])
+    expect(rows[0].plats).toBe('LOC-B')
+  })
+
+  it('keeps a moved item that the latest list places somewhere else', () => {
+    const { periodLabels: labels, items } = groupRawVolumeRows([
+      { itemId: 'A703546', plats: 'LOC-B', period: '2024-01', volume: 10 },
+      { itemId: 'A703546', plats: 'LOC-A', period: '2024-02', volume: 4 },
+      { itemId: '479698', plats: 'LOC-B', period: '2024-02', volume: 8 },
+    ])
+    const rows = buildResultRows(items, labels, platsklassConfig, config)
+    expect(rows.find((r) => r.id === 'A703546')!.plats).toBe('LOC-A')
+    expect(rows.find((r) => r.id === '479698')!.plats).toBe('LOC-B')
+  })
+
+  it('shows an item that is still in the latest list with zero picks, so nollvara-on-A still fires', () => {
+    const { periodLabels: labels, items } = groupRawVolumeRows([
+      { itemId: 'BIG', plats: 'LOC-B', period: '2024-01', volume: 1000 },
+      { itemId: 'BIG', plats: 'LOC-B', period: '2024-02', volume: 1000 },
+      { itemId: 'ZERO', plats: 'LOC-A', period: '2024-01', volume: 0 },
+      { itemId: 'ZERO', plats: 'LOC-A', period: '2024-02', volume: 0 },
+    ])
+    const rows = buildResultRows(items, labels, platsklassConfig, config)
+    expect(rows.find((r) => r.id === 'ZERO')!.signal).toBe('ZERO_ON_A')
+  })
+
+  it('judges a picked past month by that month, not by where things are now', () => {
+    const { periodLabels: labels, items } = groupRawVolumeRows([
+      { itemId: 'A703546', plats: 'LOC-B', period: '2024-01', volume: 10 },
+      { itemId: '479698', plats: 'LOC-B', period: '2024-02', volume: 8 },
+    ])
+    const rows = buildResultRows(items, labels, platsklassConfig, config, { type: 'period', index: 0 })
+    expect(rows.map((r) => r.id)).toEqual(['A703546'])
+    expect(rows[0].plats).toBe('LOC-B')
   })
 })
 
