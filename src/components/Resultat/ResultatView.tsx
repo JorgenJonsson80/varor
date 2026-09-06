@@ -18,6 +18,8 @@ import { Sparkline } from './Sparkline'
 import { SummaryPanel } from './SummaryPanel'
 import { ManagePeriods, type PeriodSummary } from './ManagePeriods'
 import { MoveSuggestions, type OptimizeScope } from './MoveSuggestions'
+import { LoadSummary } from './LoadSummary'
+import { buildLoadSummary } from '../../lib/load'
 import { locationScore, suggestMoves } from '../../lib/moves'
 import { determinePlatsklass } from '../../lib/location'
 import './Resultat.css'
@@ -268,6 +270,34 @@ export function ResultatView() {
     })
   }, [allRows, locations, scoreByPlats, moveLimit, moveBlocks, groupByPlats])
 
+  const placedArticles = useMemo(
+    () => allRows.map((row) => ({ itemId: row.id, plats: row.plats, volume: row.viewVolume })),
+    [allRows],
+  )
+
+  const loadByLine = useMemo(
+    () =>
+      buildLoadSummary({
+        placed: placedArticles,
+        groupOf: (plats) => {
+          const station = getStation(plats, stationStart, stationEnd)
+          return stationLines.get(station) ?? `Utan line (stn ${station})`
+        },
+        suggestions: moveSuggestions,
+      }),
+    [placedArticles, stationLines, stationStart, stationEnd, moveSuggestions],
+  )
+
+  const loadByStation = useMemo(
+    () =>
+      buildLoadSummary({
+        placed: placedArticles,
+        groupOf: (plats) => getStation(plats, stationStart, stationEnd),
+        suggestions: moveSuggestions,
+      }),
+    [placedArticles, stationStart, stationEnd, moveSuggestions],
+  )
+
   const periodSummaries: PeriodSummary[] = useMemo(() => {
     const counts = new Map<string, number>()
     for (const row of historyRows) counts.set(row.period, (counts.get(row.period) ?? 0) + 1)
@@ -315,6 +345,8 @@ export function ResultatView() {
               if (viewSelection === period) setViewSelection('latest')
             }}
           />
+
+          <LoadSummary byLine={loadByLine} byStation={loadByStation} periodLabel={volumeColumnLabel} />
 
           <MoveSuggestions
             suggestions={moveSuggestions}

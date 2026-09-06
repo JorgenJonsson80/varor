@@ -9,7 +9,8 @@
 
 .import-plockstatistik,
 .manage-periods,
-.move-suggestions {
+.move-suggestions,
+.load-summary {
   border: 1px solid var(--border, #e5e4e7);
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
@@ -17,7 +18,8 @@
 
 .import-plockstatistik summary,
 .manage-periods summary,
-.move-suggestions summary {
+.move-suggestions summary,
+.load-summary summary {
   cursor: pointer;
   font-weight: 600;
 }
@@ -378,4 +380,19 @@
   cursor: pointer;
   text-decoration: underline;
   font-size: 0.8rem;
+}
+
+.shift-up {
+  color: #1a7f37;
+  font-weight: 600;
+}
+
+.shift-down {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.load-total td {
+  font-weight: 600;
+  border-top: 2px solid var(--border, #e5e4e7);
 }
