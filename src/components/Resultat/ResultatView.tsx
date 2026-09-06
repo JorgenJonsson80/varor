@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useAppData } from '../../context/AppDataContext'
 import { useItemHistory } from '../../hooks/useItemHistory'
+import { getStation } from '../../lib/location'
 import {
   buildResultRows,
   groupRawVolumeRows,
@@ -69,6 +70,7 @@ export function ResultatView() {
   } = useItemHistory()
 
   const [viewSelection, setViewSelection] = useState<'latest' | 'average' | string>('latest')
+  const [stationFilter, setStationFilter] = useState<string | null>(null)
   const [signalFilter, setSignalFilter] = useState<'avvikelser' | 'alla'>('avvikelser')
   const [textFilter, setTextFilter] = useState('')
   const [klassFilter, setKlassFilter] = useState<{ varuklass: Klass; platsklass: Klass } | null>(null)
@@ -156,9 +158,26 @@ export function ResultatView() {
     )
   }, [historyRows, grouped, periodLabels, platsklassConfig, resultConfig, viewMode, placements])
 
+  const stationStart = config?.station_start ?? 4
+  const stationEnd = config?.station_end ?? 5
+
+  const stations = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const row of allRows) {
+      const station = getStation(row.plats, stationStart, stationEnd)
+      counts.set(station, (counts.get(station) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .map(([station, count]) => ({ station, count }))
+      .sort((a, b) => a.station.localeCompare(b.station, undefined, { numeric: true }))
+  }, [allRows, stationStart, stationEnd])
+
   const filteredRows = useMemo(() => {
     const needle = textFilter.trim().toLowerCase()
     return allRows.filter((row) => {
+      if (stationFilter !== null && getStation(row.plats, stationStart, stationEnd) !== stationFilter) {
+        return false
+      }
       if (klassFilter) {
         if (row.varuklass !== klassFilter.varuklass || row.platsklass !== klassFilter.platsklass) return false
       } else if (signalFilter === 'avvikelser' && row.signal === 'OK') {
@@ -167,7 +186,7 @@ export function ResultatView() {
       if (needle === '') return true
       return row.id.toLowerCase().includes(needle) || row.plats.toLowerCase().includes(needle)
     })
-  }, [allRows, signalFilter, textFilter, klassFilter])
+  }, [allRows, signalFilter, textFilter, klassFilter, stationFilter, stationStart, stationEnd])
 
   const sortedRows = useMemo(
     () => sortResultRows(filteredRows, sort.column, sort.direction),
@@ -223,6 +242,33 @@ export function ResultatView() {
           />
 
           <SummaryPanel rows={allRows} activeKlassFilter={klassFilter} onSelectKlassCell={handleSelectKlassCell} />
+
+          <div className="station-tabs">
+            <button
+              type="button"
+              className={stationFilter === null ? 'active' : ''}
+              onClick={() => {
+                setStationFilter(null)
+                setPage(0)
+              }}
+            >
+              Alla stationer
+            </button>
+            {stations.map(({ station, count }) => (
+              <button
+                key={station}
+                type="button"
+                className={station === stationFilter ? 'active' : ''}
+                title={`${count} varor`}
+                onClick={() => {
+                  setStationFilter((prev) => (prev === station ? null : station))
+                  setPage(0)
+                }}
+              >
+                {station || '(tom)'}
+              </button>
+            ))}
+          </div>
 
           <div className="resultat-controls">
             <select

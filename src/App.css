@@ -57,3 +57,25 @@
   background: transparent;
   cursor: pointer;
 }
+
+/* Station picker — used by both Platskarta and Resultat, so it lives here
+   rather than in either view's own stylesheet. */
+.station-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.station-tabs button {
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border, #e5e4e7);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.station-tabs button.active {
+  background: var(--accent, #aa3bff);
+  border-color: var(--accent, #aa3bff);
+  color: white;
+}
