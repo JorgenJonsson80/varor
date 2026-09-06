@@ -17,7 +17,7 @@ import { ImportPlockstatistik } from '../Plockstatistik/ImportPlockstatistik'
 import { Sparkline } from './Sparkline'
 import { SummaryPanel } from './SummaryPanel'
 import { ManagePeriods, type PeriodSummary } from './ManagePeriods'
-import { MoveSuggestions } from './MoveSuggestions'
+import { MoveSuggestions, type OptimizeScope } from './MoveSuggestions'
 import { locationScore, suggestMoves } from '../../lib/moves'
 import { determinePlatsklass } from '../../lib/location'
 import './Resultat.css'
@@ -71,7 +71,7 @@ export function ResultatView() {
   const { prefixRules, loading: prefixRulesLoading } = prefixRulesData
   const { locations, loading: locationsLoading } = locationsData
   const { placements, loading: placementsLoading, reload: reloadPlacements } = placementsData
-  const { stationTypes, loading: stationTypesLoading } = stationTypesData
+  const { stationTypes, stationLines, loading: stationTypesLoading } = stationTypesData
   const {
     dismissals,
     blocks: moveBlocks,
@@ -91,6 +91,7 @@ export function ResultatView() {
   const [viewSelection, setViewSelection] = useState<'latest' | 'average' | string>('latest')
   const [stationFilter, setStationFilter] = useState<string | null>(null)
   const [moveLimit, setMoveLimit] = useState(25)
+  const [optimizeScope, setOptimizeScope] = useState<OptimizeScope>('lager')
   const [signalFilter, setSignalFilter] = useState<'avvikelser' | 'alla'>('avvikelser')
   const [textFilter, setTextFilter] = useState('')
   const [klassFilter, setKlassFilter] = useState<{ varuklass: Klass; platsklass: Klass } | null>(null)
@@ -240,6 +241,20 @@ export function ResultatView() {
     [stations, stationTypes],
   )
 
+  // Under "inom line"/"inom station" every suggested move has to stay
+  // inside one group. A station with no line set stands on its own, so it
+  // only ever optimises against itself.
+  const groupByPlats = useMemo(() => {
+    if (optimizeScope === 'lager') return undefined
+    const groups = new Map<string, string>()
+    for (const loc of locations) {
+      const station = getStation(loc.plats, stationStart, stationEnd)
+      const group = optimizeScope === 'station' ? station : (stationLines.get(station) ?? `stn:${station}`)
+      groups.set(loc.plats, group)
+    }
+    return groups
+  }, [optimizeScope, locations, stationLines, stationStart, stationEnd])
+
   const moveSuggestions = useMemo(() => {
     if (allRows.length === 0 || scoreByPlats.size === 0) return []
     const occupied = new Set(allRows.map((row) => row.plats))
@@ -249,8 +264,9 @@ export function ResultatView() {
       scoreByPlats,
       limit: moveLimit,
       blocks: moveBlocks,
+      groupByPlats,
     })
-  }, [allRows, locations, scoreByPlats, moveLimit, moveBlocks])
+  }, [allRows, locations, scoreByPlats, moveLimit, moveBlocks, groupByPlats])
 
   const periodSummaries: PeriodSummary[] = useMemo(() => {
     const counts = new Map<string, number>()
@@ -305,6 +321,8 @@ export function ResultatView() {
             limit={moveLimit}
             onLimitChange={setMoveLimit}
             stationsWithoutType={stationsWithoutType}
+            optimizeScope={optimizeScope}
+            onOptimizeScopeChange={setOptimizeScope}
             dismissals={dismissals}
             onDismiss={dismiss}
             onUndismiss={undismiss}

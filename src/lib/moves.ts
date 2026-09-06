@@ -184,9 +184,22 @@ export function suggestMoves(params: {
   scoreByPlats: Map<string, number>
   limit: number
   blocks?: MoveBlocks
+  /**
+   * Keeps every suggested move inside one group — a station, or a line.
+   * Omit to let articles move anywhere in the warehouse. A location with no
+   * group can't be moved to or from while grouping is on, since there is
+   * nothing to say it belongs with anything.
+   */
+  groupByPlats?: Map<string, string>
 }): MoveSuggestion[] {
-  const { placed, emptyLocations, scoreByPlats, limit, blocks = NO_BLOCKS } = params
+  const { placed, emptyLocations, scoreByPlats, limit, blocks = NO_BLOCKS, groupByPlats } = params
   if (limit <= 0) return []
+
+  const sameGroup = (a: string, b: string): boolean => {
+    if (!groupByPlats) return true
+    const groupA = groupByPlats.get(a)
+    return groupA !== undefined && groupA === groupByPlats.get(b)
+  }
 
   const eligible: Candidate[] = []
   for (const article of placed) {
@@ -219,6 +232,7 @@ export function suggestMoves(params: {
       if (scoreByPlats.get(plats)! <= high.score) break
       if (usedPlats.has(plats)) continue
       if (blocks.par.has(pairKey(high.article.itemId, plats))) continue
+      if (!sameGroup(high.article.plats, plats)) continue
       bestEmpty = plats
       break
     }
@@ -234,6 +248,7 @@ export function suggestMoves(params: {
       if (blocks.platser.has(low.article.plats) || blocks.platser.has(high.article.plats)) continue
       if (blocks.par.has(pairKey(high.article.itemId, low.article.plats))) continue
       if (blocks.par.has(pairKey(low.article.itemId, high.article.plats))) continue
+      if (!sameGroup(high.article.plats, low.article.plats)) continue
       bestSwap = low
       break
     }

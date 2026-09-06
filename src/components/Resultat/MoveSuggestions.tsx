@@ -10,12 +10,22 @@ import {
 } from '../../lib/moves'
 import type { DismissalRow } from '../../hooks/useMoveDismissals'
 
+export type OptimizeScope = 'lager' | 'line' | 'station'
+
+const OPTIMIZE_LABELS: Record<OptimizeScope, string> = {
+  lager: 'Hela lagret',
+  line: 'Inom line',
+  station: 'Inom station',
+}
+
 interface Props {
   suggestions: MoveSuggestion[]
   limit: number
   onLimitChange: (limit: number) => void
   /** Stations with no type set — their locations are left out of the suggestions. */
   stationsWithoutType: string[]
+  optimizeScope: OptimizeScope
+  onOptimizeScopeChange: (scope: OptimizeScope) => void
   dismissals: DismissalRow[]
   onDismiss: (params: {
     itemId: string
@@ -51,6 +61,8 @@ export function MoveSuggestions({
   limit,
   onLimitChange,
   stationsWithoutType,
+  optimizeScope,
+  onOptimizeScopeChange,
   dismissals,
   onDismiss,
   onUndismiss,
@@ -172,6 +184,20 @@ export function MoveSuggestions({
           </div>
         </div>
       )}
+
+      <div className="moves-limit">
+        <span>Optimera:</span>
+        {(['lager', 'line', 'station'] as OptimizeScope[]).map((scopeOption) => (
+          <button
+            key={scopeOption}
+            type="button"
+            className={scopeOption === optimizeScope ? 'active' : ''}
+            onClick={() => onOptimizeScopeChange(scopeOption)}
+          >
+            {OPTIMIZE_LABELS[scopeOption]}
+          </button>
+        ))}
+      </div>
 
       <div className="moves-limit">
         <span>Visa:</span>

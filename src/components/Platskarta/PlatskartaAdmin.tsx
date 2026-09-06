@@ -19,6 +19,7 @@ export function PlatskartaAdmin({ userId }: Props) {
   const { rules, loading: rulesLoading, addRule, updateRule, deleteRule, reorder, replaceAll } = rulesData
   const {
     stationTypes,
+    stationLines,
     loading: stationTypesLoading,
     setType: setStationType,
     clearType: clearStationType,
@@ -241,7 +242,8 @@ export function PlatskartaAdmin({ userId }: Props) {
       <StationTypeEditor
         stations={stations}
         stationTypes={stationTypes}
-        onSet={(station, type) => setStationType(station, type, userId)}
+        stationLines={stationLines}
+        onSet={(station, type, line) => setStationType(station, type, userId, line)}
         onClear={clearStationType}
       />
 

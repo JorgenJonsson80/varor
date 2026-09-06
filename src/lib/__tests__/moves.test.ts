@@ -261,3 +261,63 @@ describe('suggestMoves — dismissals', () => {
     ])
   })
 })
+
+describe('suggestMoves — optimering inom en grupp', () => {
+  const scores = new Map([
+    ['S1-BAD', 1],
+    ['S1-GOOD', 3],
+    ['S2-GOOD', 3],
+  ])
+  // S1-* sit in one station, S2-* in another.
+  const byStation = new Map([
+    ['S1-BAD', '11'],
+    ['S1-GOOD', '11'],
+    ['S2-GOOD', '22'],
+  ])
+
+  const placed = [
+    { itemId: 'RUNNER', plats: 'S1-BAD', volume: 500 },
+    { itemId: 'SLEEPER', plats: 'S2-GOOD', volume: 5 },
+  ]
+
+  it('crosses stations when no grouping is given', () => {
+    const suggestions = suggestMoves({ placed, emptyLocations: [], scoreByPlats: scores, limit: 10 })
+    expect(suggestions[0]).toMatchObject({ itemId: 'RUNNER', toPlats: 'S2-GOOD' })
+  })
+
+  it('stays inside the group when one is given', () => {
+    const suggestions = suggestMoves({
+      placed,
+      emptyLocations: [],
+      scoreByPlats: scores,
+      limit: 10,
+      groupByPlats: byStation,
+    })
+    expect(suggestions).toEqual([])
+  })
+
+  it('still moves within the group', () => {
+    const suggestions = suggestMoves({
+      placed: [
+        { itemId: 'RUNNER', plats: 'S1-BAD', volume: 500 },
+        { itemId: 'SLEEPER', plats: 'S1-GOOD', volume: 5 },
+      ],
+      emptyLocations: [],
+      scoreByPlats: scores,
+      limit: 10,
+      groupByPlats: byStation,
+    })
+    expect(suggestions[0]).toMatchObject({ itemId: 'RUNNER', toPlats: 'S1-GOOD', swapWithItemId: 'SLEEPER' })
+  })
+
+  it('leaves out a location that belongs to no group while grouping is on', () => {
+    const suggestions = suggestMoves({
+      placed: [{ itemId: 'RUNNER', plats: 'S1-BAD', volume: 500 }],
+      emptyLocations: ['S1-GOOD'],
+      scoreByPlats: scores,
+      limit: 10,
+      groupByPlats: new Map([['S1-BAD', '11']]),
+    })
+    expect(suggestions).toEqual([])
+  })
+})
