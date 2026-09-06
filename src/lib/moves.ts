@@ -60,6 +60,7 @@ export type DismissalReason =
   | 'plats_saknas'
   | 'plats_blockerad'
   | 'fel_plockmetod'
+  | 'kraver_pallplats'
   | 'kraver_temperatur'
   | 'vara_utgar'
   | 'annat'
@@ -71,6 +72,7 @@ export const DISMISSAL_REASONS: DismissalReason[] = [
   'plats_saknas',
   'plats_blockerad',
   'fel_plockmetod',
+  'kraver_pallplats',
   'kraver_temperatur',
   'vara_utgar',
   'annat',
@@ -81,25 +83,41 @@ export const DISMISSAL_REASON_LABELS: Record<DismissalReason, string> = {
   plats_saknas: 'Plats finns ej i verkligheten',
   plats_blockerad: 'Platsen trasig eller blockerad',
   fel_plockmetod: 'Fel plockmetod för varan',
+  kraver_pallplats: 'Varan kräver pallplats',
   kraver_temperatur: 'Varan kräver kyla/temperatur',
   vara_utgar: 'Varan ska utgå',
   annat: 'Annat',
 }
 
 /**
- * A location that isn't real, or is out of service, is no use to anybody —
- * blocked as a target for every article. An article being phased out isn't
- * worth moving anywhere. Everything else says something about one article
- * in one slot and nothing beyond it.
+ * How far a dismissal reaches by default, from what the reason is really
+ * about.
+ *
+ * A location that isn't real, or is out of service, is no use to anybody.
+ * Needing a pallet slot, cold storage, or a particular picking method is a
+ * property of the ARTICLE, not of one slot — blocking only the combination
+ * just moves the same impossible suggestion to the next location, which is
+ * exactly what it did before these were widened. Only a box that won't fit
+ * one specific slot, and free-text "annat", stay narrow.
+ *
+ * This is a default, not a rule: the person dismissing can widen or narrow
+ * it, since they know things the reason list doesn't.
  */
 export const DISMISSAL_SCOPES: Record<DismissalReason, DismissalScope> = {
   kartong_for_stor: 'pair',
   plats_saknas: 'plats',
   plats_blockerad: 'plats',
-  fel_plockmetod: 'pair',
-  kraver_temperatur: 'pair',
+  fel_plockmetod: 'vara',
+  kraver_pallplats: 'vara',
+  kraver_temperatur: 'vara',
   vara_utgar: 'vara',
   annat: 'pair',
+}
+
+export const DISMISSAL_SCOPE_LABELS: Record<DismissalScope, string> = {
+  pair: 'Bara denna vara till denna plats',
+  plats: 'Platsen — för alla varor',
+  vara: 'Varan — till alla platser',
 }
 
 export interface MoveBlocks {

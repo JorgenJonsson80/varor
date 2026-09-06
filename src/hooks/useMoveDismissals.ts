@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { DISMISSAL_SCOPES, pairKey, type DismissalReason, type MoveBlocks } from '../lib/moves'
+import {
+  DISMISSAL_SCOPES,
+  pairKey,
+  type DismissalReason,
+  type DismissalScope,
+  type MoveBlocks,
+} from '../lib/moves'
 
 export interface DismissalRow {
   id: string
@@ -35,14 +41,22 @@ export function useMoveDismissals() {
   }, [reload])
 
   /**
-   * The reason decides what is stored, and therefore how far the dismissal
-   * reaches: a location nobody can use is stored without an article, an
-   * article on its way out without a location, everything else as the exact
-   * pair it was said about.
+   * What is stored decides how far the dismissal reaches: a location nobody
+   * can use is stored without an article, an article that can't be moved
+   * without a location, everything else as the exact pair it was said
+   * about. The reason supplies the default scope; the caller can override
+   * it, since the person dismissing knows things the reason list doesn't.
    */
   const dismiss = useCallback(
-    async (params: { itemId: string; plats: string; reason: DismissalReason; note?: string; userId?: string }) => {
-      const scope = DISMISSAL_SCOPES[params.reason]
+    async (params: {
+      itemId: string
+      plats: string
+      reason: DismissalReason
+      scope?: DismissalScope
+      note?: string
+      userId?: string
+    }) => {
+      const scope = params.scope ?? DISMISSAL_SCOPES[params.reason]
       const { error } = await supabase.from('vp_move_dismissals').insert({
         item_id: scope === 'plats' ? null : params.itemId,
         plats: scope === 'vara' ? null : params.plats,

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { DISMISSAL_SCOPES, locationScore, pairKey, suggestMoves, type MoveBlocks } from '../moves'
+import {
+  DISMISSAL_REASONS,
+  DISMISSAL_REASON_LABELS,
+  DISMISSAL_SCOPES,
+  locationScore,
+  pairKey,
+  suggestMoves,
+  type MoveBlocks,
+} from '../moves'
 
 describe('locationScore', () => {
   it('ranks a spot by its platsklass', () => {
@@ -151,11 +159,26 @@ describe('dismissal scopes', () => {
     expect(DISMISSAL_SCOPES.vara_utgar).toBe('vara')
   })
 
-  it('keeps everything else to the one combination it was said about', () => {
+  it('blocks the whole article for reasons that are properties of the article', () => {
+    // Needing a pallet slot, cold storage or a particular picking method
+    // says nothing about the slot it happened to be suggested into —
+    // blocking only that combination just moves the same impossible
+    // suggestion to the next location.
+    expect(DISMISSAL_SCOPES.kraver_pallplats).toBe('vara')
+    expect(DISMISSAL_SCOPES.kraver_temperatur).toBe('vara')
+    expect(DISMISSAL_SCOPES.fel_plockmetod).toBe('vara')
+  })
+
+  it('keeps a bad fit and free-text to the one combination it was said about', () => {
     expect(DISMISSAL_SCOPES.kartong_for_stor).toBe('pair')
-    expect(DISMISSAL_SCOPES.fel_plockmetod).toBe('pair')
-    expect(DISMISSAL_SCOPES.kraver_temperatur).toBe('pair')
     expect(DISMISSAL_SCOPES.annat).toBe('pair')
+  })
+
+  it('has a scope for every reason', () => {
+    for (const reason of DISMISSAL_REASONS) {
+      expect(DISMISSAL_SCOPES[reason]).toBeDefined()
+      expect(DISMISSAL_REASON_LABELS[reason]).toBeTruthy()
+    }
   })
 })
 

@@ -3,7 +3,9 @@ import {
   DISMISSAL_REASONS,
   DISMISSAL_REASON_LABELS,
   DISMISSAL_SCOPES,
+  DISMISSAL_SCOPE_LABELS,
   type DismissalReason,
+  type DismissalScope,
   type MoveSuggestion,
 } from '../../lib/moves'
 import type { DismissalRow } from '../../hooks/useMoveDismissals'
@@ -15,14 +17,20 @@ interface Props {
   /** Stations with no type set — their locations are left out of the suggestions. */
   stationsWithoutType: string[]
   dismissals: DismissalRow[]
-  onDismiss: (params: { itemId: string; plats: string; reason: DismissalReason; note?: string }) => Promise<void>
+  onDismiss: (params: {
+    itemId: string
+    plats: string
+    reason: DismissalReason
+    scope: DismissalScope
+    note?: string
+  }) => Promise<void>
   onUndismiss: (id: string) => Promise<void>
 }
 
 const LIMITS = [10, 25, 50, 100]
 
-function scopeText(reason: DismissalReason, itemId: string, plats: string): string {
-  switch (DISMISSAL_SCOPES[reason]) {
+function scopeText(scope: DismissalScope, itemId: string, plats: string): string {
+  switch (scope) {
     case 'plats':
       return `${plats} föreslås inte till någon vara igen`
     case 'vara':
@@ -50,6 +58,7 @@ export function MoveSuggestions({
   const [done, setDone] = useState<Set<string>>(new Set())
   const [dismissing, setDismissing] = useState<MoveSuggestion | null>(null)
   const [reason, setReason] = useState<DismissalReason>('kartong_for_stor')
+  const [scope, setScope] = useState<DismissalScope>(DISMISSAL_SCOPES.kartong_for_stor)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -72,7 +81,7 @@ export function MoveSuggestions({
     setBusy(true)
     setError(null)
     try {
-      await onDismiss({ itemId: dismissing.itemId, plats: dismissing.toPlats, reason, note })
+      await onDismiss({ itemId: dismissing.itemId, plats: dismissing.toPlats, reason, scope, note })
       setDismissing(null)
       setNote('')
     } catch (e) {
@@ -123,7 +132,14 @@ export function MoveSuggestions({
           </p>
           <label>
             Orsak
-            <select value={reason} onChange={(e) => setReason(e.target.value as DismissalReason)}>
+            <select
+              value={reason}
+              onChange={(e) => {
+                const next = e.target.value as DismissalReason
+                setReason(next)
+                setScope(DISMISSAL_SCOPES[next])
+              }}
+            >
               {DISMISSAL_REASONS.map((r) => (
                 <option key={r} value={r}>
                   {DISMISSAL_REASON_LABELS[r]}
@@ -132,10 +148,20 @@ export function MoveSuggestions({
             </select>
           </label>
           <label>
+            Gäller
+            <select value={scope} onChange={(e) => setScope(e.target.value as DismissalScope)}>
+              {(['pair', 'vara', 'plats'] as DismissalScope[]).map((s) => (
+                <option key={s} value={s}>
+                  {DISMISSAL_SCOPE_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             Anteckning (valfritt)
             <input type="text" value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
-          <p className="hint">{scopeText(reason, dismissing.itemId, dismissing.toPlats)}.</p>
+          <p className="hint">{scopeText(scope, dismissing.itemId, dismissing.toPlats)}.</p>
           <div className="dismiss-form-actions">
             <button type="button" disabled={busy} onClick={handleConfirmDismiss}>
               {busy ? 'Sparar…' : 'Avfärda'}
