@@ -10,10 +10,21 @@ import type { Klass } from './types'
  * - `temperatur` — temperature-controlled, same: keep the line count down
  * - `aframe` — automated dispensing; what goes in it is a separate decision
  *   with its own criteria, so it is left out of move suggestions entirely
+ * - `utanfor` — deliberately outside the analysis (KG/KYL). Same exclusion
+ *   as aframe, but says so on purpose: a station left with no type at all
+ *   is reported as unfinished setup, and this is how you say it is finished
+ *   and the answer is "leave it alone".
  */
-export type StationType = 'tunnel' | 'vanlig' | 'vagnsplock' | 'temperatur' | 'aframe'
+export type StationType = 'tunnel' | 'vanlig' | 'vagnsplock' | 'temperatur' | 'aframe' | 'utanfor'
 
-export const STATION_TYPES: StationType[] = ['tunnel', 'vanlig', 'vagnsplock', 'temperatur', 'aframe']
+export const STATION_TYPES: StationType[] = [
+  'tunnel',
+  'vanlig',
+  'vagnsplock',
+  'temperatur',
+  'aframe',
+  'utanfor',
+]
 
 export const STATION_TYPE_LABELS: Record<StationType, string> = {
   tunnel: 'Tunnel (vill ha många rader)',
@@ -21,6 +32,7 @@ export const STATION_TYPE_LABELS: Record<StationType, string> = {
   vagnsplock: 'Vagnsplock (vill ha få rader)',
   temperatur: 'Temperatur (vill ha få rader)',
   aframe: 'A-Frame (utesluts)',
+  utanfor: 'Utanför analysen',
 }
 
 const STATION_BIAS: Record<StationType, number | null> = {
@@ -29,6 +41,7 @@ const STATION_BIAS: Record<StationType, number | null> = {
   vagnsplock: -1,
   temperatur: -1,
   aframe: null,
+  utanfor: null,
 }
 
 const KLASS_SCORE: Record<Klass, number> = { A: 3, B: 2, C: 1 }

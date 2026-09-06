@@ -35,6 +35,9 @@ PapaParse (CSV) + SheetJS `xlsx` för filimport. GitHub Actions + GitHub Pages f
     OFFSET blir dyrare ju djupare in man kommer). Keyset-cursorn är den enda lösning som visat sig
     hålla.
   - `newitems.ts` — proxy-klassificering för nya varor utan egen historik (ATC-5 + förpackningsstorlek)
+  - `moves.ts` — flyttförslag: platspoäng (platsklass + stationstyp), greedy parning av
+    storplockare i dåliga lägen mot lågplockare i bra, och avfärdningarnas räckvidd
+  - `load.ts` — belastning per line/station, och hur listade förslag skulle förskjuta den
   - `history.ts` — filformat-tolkning (brett/långt, månadskolumn-igenkänning) plus
     `resolveImportedPlacements` (var varje vara ligger enligt den inskickade filen) och
     `dedupeVolumeRows` (en rad per vara+månad, den med flest plock vinner)
@@ -58,6 +61,15 @@ Schema som SQL-migrationer i `supabase/migrations/`, körs i filnamnsordning via
 - `vp_items` / `vp_item_monthly_volume` — varor + månadsvis plockvolym per plats.
   **`vp_items.current_plats` + `placement_batch` är sanningen om var en vara ligger.** Härled
   aldrig placeringen ur `vp_item_monthly_volume` — se lärdomen nedan.
+- `vp_station_types` — vad varje station är till för (`type`) och vilken line den tillhör
+  (`line`). Platsklass säger var en plats ligger *inom* stationen; det här säger vad stationen som
+  helhet ska bära, vilket platsklassen bara delvis fångar — en vagnsplocksplats kan vara A-klassad
+  för att den ligger bra där, fast stationen ändå vill ha få rader. **En station utan typ utesluts
+  ur flyttförslagen** och rapporteras som ofärdig konfiguration; typen `utanfor` är hur man säger
+  att det är medvetet (KG/KYL).
+- `vp_move_dismissals` — varför en föreslagen flytt inte går att genomföra. Vad som sparas avgör
+  räckvidden: bara `plats` = platsen duger inte åt någon, bara `item_id` = varan kan inte flyttas
+  alls, båda = just den kombinationen. Se lärdomen om räckvidd nedan.
 - `vp_allowed_users` + `vp_is_allowed_user()` — **åtkomst-allowlist**. Detta Supabase-projekt delas
   med andra lagerappar (samma organisation/projekt), så varje tabells RLS-policy måste gå via
   `vp_is_allowed_user()`, en `BEFORE INSERT`-trigger på `auth.users` blockerar signup för icke-
@@ -96,7 +108,12 @@ lagrets faktiska platser/artiklar, och några konfigvärden. Så här sätter du
 5. **Bygg platskartan för det nya lagret**: importera platslistan (Platskarta-vyn), sätt upp
    positions- och/eller prefix-regler utifrån hur *den kundens* platskoder är uppbyggda — detta är
    inte kod, det är lagerkunskap som bara kunden har. Fråga, gissa inte.
-6. **Kolla att kundens plockstatistik har rätt form** innan första importen. Varje rad måste bära
+6. **Sätt stationstyp och line** per station (Platskarta → Stationstyper). Vilka stationer som är
+   tunnel, vagnsplock, temperatur eller automat är lagerkunskap — fråga. En station utan typ
+   utesluts ur flyttförslagen, så det syns direkt om något glömts; är uteslutningen medveten sätter
+   man typen `utanfor` istället för att lämna tomt. Line grupperar stationer så förslagen kan köras
+   en line i taget; lämna tomt för en station som står för sig själv.
+7. **Kolla att kundens plockstatistik har rätt form** innan första importen. Varje rad måste bära
    *både* varunummer och lagerplats — plockstatistiken är källan till var varorna ligger, det finns
    inget separat placeringsregister. Två format stöds:
    - **Brett**: en rad per vara+plats, en kolumn per månad. Vanligast från WMS-exporter. En vara som
@@ -107,15 +124,37 @@ lagrets faktiska platser/artiklar, och några konfigvärden. Så här sätter du
    Månadskolumner känns igen automatiskt ("Gissa"-knappen) i de flesta format (`202601`, `2026-01`,
    `jan-26`, `januari 2026`). En kolumn som *inte* tolkas som månad släpps igenom med sitt råa namn
    som periodnamn — välj alltså aldrig en summa- eller totalkolumn som månadskolumn.
-7. **Importera plockstatistiken** (Resultat-vyn). Det är den här importen som skriver ner var varje
+8. **Importera plockstatistiken** (Resultat-vyn). Det är den här importen som skriver ner var varje
    vara ligger, så innan den körts finns inga placeringar att analysera.
-8. **Deploy**: forka/skapa nytt repo, sätt repo-secrets `VITE_SUPABASE_URL` +
+9. **Deploy**: forka/skapa nytt repo, sätt repo-secrets `VITE_SUPABASE_URL` +
    `VITE_SUPABASE_ANON_KEY`, GitHub Pages-workflowen (`.github/workflows/deploy.yml`) sköter resten
    på push till `main`.
 
 Att säga till kunden direkt: **täcker filen en påbörjad månad** (t.ex. exporterad mitt i månaden)
 blir vyn "Senaste månaden" tunn — varuklassen räknas då på några få dagars plock och hoppar runt.
 Använd senaste *hela* månaden eller "Snitt" för den riktiga analysen.
+
+## Flyttförslagen
+
+Listan svarar på "vad ska jag göra först", inte bara "vad är fel". Modellen:
+
+- **Platspoäng** = platsklass (A=3, B=2, C=1) + stationens bias (tunnel +1, vanlig 0, vagnsplock
+  och temperatur −1). A-Frame och `utanfor` saknar poäng och utesluts helt. En tunnel-C hamnar
+  därmed i nivå med en vanlig B — tunneln vill ha trafiken.
+- **Vinst** = plockskillnad × poängskillnad. För ett byte är det *skillnaden* i plock mellan de två
+  varorna, eftersom det lågplockaren förlorar äter upp en del av det högplockaren vinner.
+- **Greedy, med flit.** Största plockaren får bästa lediga läget, sedan nästa. Inte matematiskt
+  optimalt, men listan går att beta av uppifrån och avbryta när som helst — vilket är hur den
+  faktiskt används. Varje vara och plats föreslås högst en gång, så ordningen spelar ingen roll.
+- **Räckvidd** (hela lagret / inom line / inom station) begränsar var en flytt får gå. Man planerar
+  arbetet per line, inte som en lista som hoppar mellan husets ändar.
+
+Effekten uttrycks i "plock × klassteg", inte i tid. Vill kunden ha sekunder krävs deras estimat på
+hur lång en plockrad tar på A- respektive C-plats.
+
+`load.ts` visar belastning per line/station **utan måltal** — verktyget vet inte hur många rader en
+line tål, och en påhittad siffra gör förslagen sämre, inte bättre. Måltal är värt att lägga till
+först när riktig rader-per-station-data finns att jämföra mot.
 
 ## Lärdomar värda att komma ihåg
 
@@ -128,6 +167,13 @@ Använd senaste *hela* månaden eller "Snitt" för den riktiga analysen.
   `placement_batch`-stämpel gemensam för hela importen; varor med äldre stämpel var inte med i
   senaste listan och räknas inte som placerade. Att välja en gammal månad i månadsväljaren läser
   fortfarande historiken — det är enda stället historiken får styra platsen.
+- **En avfärdnings räckvidd följer vad orsaken egentligen handlar om.** "Kräver pallplats",
+  "kräver kyla" och "fel plockmetod" är egenskaper hos *varan* — spärrar man bara kombinationen
+  vara+plats dyker samma omöjliga förslag upp igen mot nästa plats. "Plats finns ej" och "trasig
+  plats" gäller platsen för alla varor. Bara "kartong för stor" och fritext är smala. Orsaken sätter
+  ett förval, men användaren kan ändra räckvidden — hen vet saker orsakslistan inte gör. En spärrad
+  plats duger fortfarande som *avsändare*: att få bort en storsäljare från en trasig plats är
+  fortfarande värt att föreslå.
 - **Egress/anropskvot är en delad resurs** när flera appar sitter i samma Supabase-organisation —
   en enskild apps ineffektiva hämtning (t.ex. full tabell hämtad separat av varje flik istället för
   delad) kan slå ut *alla* appar i organisationen med en Fair Use-spärr, inte bara sin egen app.

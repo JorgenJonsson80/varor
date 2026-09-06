@@ -29,6 +29,12 @@ describe('locationScore', () => {
   it('excludes A-Frame entirely', () => {
     expect(locationScore('A', 'aframe')).toBeNull()
   })
+
+  it('excludes a station deliberately kept outside the analysis', () => {
+    // Same effect as A-Frame, but said on purpose rather than by omission —
+    // a station with no type at all means the setup is unfinished.
+    expect(locationScore('A', 'utanfor')).toBeNull()
+  })
 })
 
 describe('suggestMoves', () => {
