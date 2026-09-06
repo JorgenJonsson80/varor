@@ -17,6 +17,9 @@ import { ImportPlockstatistik } from '../Plockstatistik/ImportPlockstatistik'
 import { Sparkline } from './Sparkline'
 import { SummaryPanel } from './SummaryPanel'
 import { ManagePeriods, type PeriodSummary } from './ManagePeriods'
+import { MoveSuggestions } from './MoveSuggestions'
+import { locationScore, suggestMoves } from '../../lib/moves'
+import { determinePlatsklass } from '../../lib/location'
 import './Resultat.css'
 
 const SIGNAL_LABELS: Record<SignalType, string> = {
@@ -54,12 +57,14 @@ function formatPeriodLabel(period: string): string {
 }
 
 export function ResultatView() {
-  const { configData, rulesData, prefixRulesData, locationsData, placementsData } = useAppData()
+  const { configData, rulesData, prefixRulesData, locationsData, placementsData, stationTypesData } =
+    useAppData()
   const { config, loading: configLoading } = configData
   const { rules, loading: rulesLoading } = rulesData
   const { prefixRules, loading: prefixRulesLoading } = prefixRulesData
   const { locations, loading: locationsLoading } = locationsData
   const { placements, loading: placementsLoading, reload: reloadPlacements } = placementsData
+  const { stationTypes, loading: stationTypesLoading } = stationTypesData
   const {
     rows: historyRows,
     loading: historyLoading,
@@ -71,6 +76,7 @@ export function ResultatView() {
 
   const [viewSelection, setViewSelection] = useState<'latest' | 'average' | string>('latest')
   const [stationFilter, setStationFilter] = useState<string | null>(null)
+  const [moveLimit, setMoveLimit] = useState(25)
   const [signalFilter, setSignalFilter] = useState<'avvikelser' | 'alla'>('avvikelser')
   const [textFilter, setTextFilter] = useState('')
   const [klassFilter, setKlassFilter] = useState<{ varuklass: Klass; platsklass: Klass } | null>(null)
@@ -99,7 +105,13 @@ export function ResultatView() {
   }
 
   const loading =
-    configLoading || rulesLoading || prefixRulesLoading || locationsLoading || placementsLoading || historyLoading
+    configLoading ||
+    rulesLoading ||
+    prefixRulesLoading ||
+    locationsLoading ||
+    placementsLoading ||
+    stationTypesLoading ||
+    historyLoading
 
   const manualMap = useMemo(() => {
     const map: Record<string, Klass> = {}
@@ -193,6 +205,37 @@ export function ResultatView() {
     [filteredRows, sort],
   )
 
+  // Scores every location the suggestions may use: platsklass says where it
+  // sits within its station, the station type what that station should be
+  // carrying. A station with no type set is left out rather than guessed at,
+  // and so is A-Frame, whose contents are a separate decision.
+  const scoreByPlats = useMemo(() => {
+    const scores = new Map<string, number>()
+    for (const loc of locations) {
+      const stationType = stationTypes.get(getStation(loc.plats, stationStart, stationEnd))
+      if (!stationType) continue
+      const score = locationScore(determinePlatsklass(loc.plats, platsklassConfig).klass, stationType)
+      if (score !== null) scores.set(loc.plats, score)
+    }
+    return scores
+  }, [locations, stationTypes, stationStart, stationEnd, platsklassConfig])
+
+  const stationsWithoutType = useMemo(
+    () => stations.map((s) => s.station).filter((station) => !stationTypes.has(station)),
+    [stations, stationTypes],
+  )
+
+  const moveSuggestions = useMemo(() => {
+    if (allRows.length === 0 || scoreByPlats.size === 0) return []
+    const occupied = new Set(allRows.map((row) => row.plats))
+    return suggestMoves({
+      placed: allRows.map((row) => ({ itemId: row.id, plats: row.plats, volume: row.viewVolume })),
+      emptyLocations: locations.map((l) => l.plats).filter((plats) => !occupied.has(plats)),
+      scoreByPlats,
+      limit: moveLimit,
+    })
+  }, [allRows, locations, scoreByPlats, moveLimit])
+
   const periodSummaries: PeriodSummary[] = useMemo(() => {
     const counts = new Map<string, number>()
     for (const row of historyRows) counts.set(row.period, (counts.get(row.period) ?? 0) + 1)
@@ -239,6 +282,13 @@ export function ResultatView() {
               await deletePeriod(period)
               if (viewSelection === period) setViewSelection('latest')
             }}
+          />
+
+          <MoveSuggestions
+            suggestions={moveSuggestions}
+            limit={moveLimit}
+            onLimitChange={setMoveLimit}
+            stationsWithoutType={stationsWithoutType}
           />
 
           <SummaryPanel rows={allRows} activeKlassFilter={klassFilter} onSelectKlassCell={handleSelectKlassCell} />

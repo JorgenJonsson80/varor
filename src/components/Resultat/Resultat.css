@@ -8,16 +8,63 @@
 }
 
 .import-plockstatistik,
-.manage-periods {
+.manage-periods,
+.move-suggestions {
   border: 1px solid var(--border, #e5e4e7);
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
 }
 
 .import-plockstatistik summary,
-.manage-periods summary {
+.manage-periods summary,
+.move-suggestions summary {
   cursor: pointer;
   font-weight: 600;
+}
+
+.moves-done-badge {
+  color: #1a7f37;
+  font-weight: 600;
+}
+
+.moves-limit {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.moves-limit button {
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border, #e5e4e7);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.moves-limit button.active {
+  background: var(--accent, #aa3bff);
+  border-color: var(--accent, #aa3bff);
+  color: white;
+}
+
+.moves-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.moves-table th,
+.moves-table td {
+  border-bottom: 1px solid var(--border, #e5e4e7);
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+}
+
+.move-done {
+  opacity: 0.5;
+  text-decoration: line-through;
 }
 
 .periods-table {

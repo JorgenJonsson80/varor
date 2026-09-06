@@ -5,6 +5,7 @@ import { buildPlatskartaExport, parsePlatskartaExport } from '../../lib/platskar
 import { useAppData } from '../../context/AppDataContext'
 import { RuleEditor } from './RuleEditor'
 import { PrefixRuleEditor } from './PrefixRuleEditor'
+import { StationTypeEditor } from './StationTypeEditor'
 import { ImportLocations } from './ImportLocations'
 import './Platskarta.css'
 
@@ -13,9 +14,15 @@ interface Props {
 }
 
 export function PlatskartaAdmin({ userId }: Props) {
-  const { configData, rulesData, prefixRulesData, locationsData } = useAppData()
+  const { configData, rulesData, prefixRulesData, locationsData, stationTypesData } = useAppData()
   const { config, loading: configLoading, update: updateConfig } = configData
   const { rules, loading: rulesLoading, addRule, updateRule, deleteRule, reorder, replaceAll } = rulesData
+  const {
+    stationTypes,
+    loading: stationTypesLoading,
+    setType: setStationType,
+    clearType: clearStationType,
+  } = stationTypesData
   const {
     prefixRules,
     loading: prefixRulesLoading,
@@ -198,7 +205,7 @@ export function PlatskartaAdmin({ userId }: Props) {
     }
   }
 
-  if (configLoading || rulesLoading || prefixRulesLoading || locationsLoading) {
+  if (configLoading || rulesLoading || prefixRulesLoading || stationTypesLoading || locationsLoading) {
     return <p>Laddar platskarta…</p>
   }
 
@@ -230,6 +237,13 @@ export function PlatskartaAdmin({ userId }: Props) {
       <ImportLocations onImport={importLocations} />
 
       <PrefixRuleEditor prefixRules={prefixRules} onSave={savePrefixRule} onDelete={deletePrefixRule} />
+
+      <StationTypeEditor
+        stations={stations}
+        stationTypes={stationTypes}
+        onSet={(station, type) => setStationType(station, type, userId)}
+        onClear={clearStationType}
+      />
 
       <RuleEditor rules={rules} onAdd={addRule} onUpdate={updateRule} onDelete={deleteRule} onReorder={reorder} />
 
