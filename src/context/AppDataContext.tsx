@@ -5,6 +5,7 @@ import { usePrefixRules } from '../hooks/usePrefixRules'
 import { useLocations } from '../hooks/useLocations'
 import { useItemPlacements } from '../hooks/useItemPlacements'
 import { useStationTypes } from '../hooks/useStationTypes'
+import { useMoveDismissals } from '../hooks/useMoveDismissals'
 
 interface AppDataContextValue {
   configData: ReturnType<typeof useLocationConfig>
@@ -13,6 +14,7 @@ interface AppDataContextValue {
   locationsData: ReturnType<typeof useLocations>
   placementsData: ReturnType<typeof useItemPlacements>
   stationTypesData: ReturnType<typeof useStationTypes>
+  dismissalsData: ReturnType<typeof useMoveDismissals>
 }
 
 const AppDataContext = createContext<AppDataContextValue | null>(null)
@@ -32,9 +34,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const locationsData = useLocations()
   const placementsData = useItemPlacements()
   const stationTypesData = useStationTypes()
+  const dismissalsData = useMoveDismissals()
 
   return (
-    <AppDataContext.Provider value={{ configData, rulesData, prefixRulesData, locationsData, placementsData, stationTypesData }}>
+    <AppDataContext.Provider value={{ configData, rulesData, prefixRulesData, locationsData, placementsData, stationTypesData, dismissalsData }}>
       {children}
     </AppDataContext.Provider>
   )

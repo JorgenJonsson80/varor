@@ -67,6 +67,37 @@
   text-decoration: line-through;
 }
 
+.dismiss-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  border: 1px solid var(--accent, #aa3bff);
+  border-radius: 0.35rem;
+}
+
+.dismiss-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.dismiss-form-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.dismissals-list {
+  margin-top: 0.75rem;
+}
+
+.dismissals-list summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
 .periods-table {
   width: 100%;
   border-collapse: collapse;

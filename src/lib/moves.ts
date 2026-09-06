@@ -48,6 +48,75 @@ export function locationScore(platsklass: Klass, stationType: StationType): numb
   return bias === null ? null : KLASS_SCORE[platsklass] + bias
 }
 
+/**
+ * Why a suggested move can't be carried out. The reason decides how widely
+ * it applies, which is the point of recording it rather than just hiding
+ * the row: a location that doesn't exist shouldn't be proposed to anyone
+ * ever again, while a box that won't fit one particular slot says nothing
+ * about the next article.
+ */
+export type DismissalReason =
+  | 'kartong_for_stor'
+  | 'plats_saknas'
+  | 'plats_blockerad'
+  | 'fel_plockmetod'
+  | 'kraver_temperatur'
+  | 'vara_utgar'
+  | 'annat'
+
+export type DismissalScope = 'pair' | 'plats' | 'vara'
+
+export const DISMISSAL_REASONS: DismissalReason[] = [
+  'kartong_for_stor',
+  'plats_saknas',
+  'plats_blockerad',
+  'fel_plockmetod',
+  'kraver_temperatur',
+  'vara_utgar',
+  'annat',
+]
+
+export const DISMISSAL_REASON_LABELS: Record<DismissalReason, string> = {
+  kartong_for_stor: 'Kartong för stor',
+  plats_saknas: 'Plats finns ej i verkligheten',
+  plats_blockerad: 'Platsen trasig eller blockerad',
+  fel_plockmetod: 'Fel plockmetod för varan',
+  kraver_temperatur: 'Varan kräver kyla/temperatur',
+  vara_utgar: 'Varan ska utgå',
+  annat: 'Annat',
+}
+
+/**
+ * A location that isn't real, or is out of service, is no use to anybody —
+ * blocked as a target for every article. An article being phased out isn't
+ * worth moving anywhere. Everything else says something about one article
+ * in one slot and nothing beyond it.
+ */
+export const DISMISSAL_SCOPES: Record<DismissalReason, DismissalScope> = {
+  kartong_for_stor: 'pair',
+  plats_saknas: 'plats',
+  plats_blockerad: 'plats',
+  fel_plockmetod: 'pair',
+  kraver_temperatur: 'pair',
+  vara_utgar: 'vara',
+  annat: 'pair',
+}
+
+export interface MoveBlocks {
+  /** Never proposed as a destination. Still fine as a source — getting an article off a broken slot is worth suggesting. */
+  platser: Set<string>
+  /** Never moved at all. */
+  varor: Set<string>
+  /** `itemId|plats` — this article specifically can't go into this location. */
+  par: Set<string>
+}
+
+export function pairKey(itemId: string, plats: string): string {
+  return itemId + '|' + plats
+}
+
+export const NO_BLOCKS: MoveBlocks = { platser: new Set(), varor: new Set(), par: new Set() }
+
 export interface PlacedArticle {
   itemId: string
   plats: string
@@ -96,12 +165,14 @@ export function suggestMoves(params: {
   emptyLocations: string[]
   scoreByPlats: Map<string, number>
   limit: number
+  blocks?: MoveBlocks
 }): MoveSuggestion[] {
-  const { placed, emptyLocations, scoreByPlats, limit } = params
+  const { placed, emptyLocations, scoreByPlats, limit, blocks = NO_BLOCKS } = params
   if (limit <= 0) return []
 
   const eligible: Candidate[] = []
   for (const article of placed) {
+    if (blocks.varor.has(article.itemId)) continue
     const score = scoreByPlats.get(article.plats)
     if (score !== undefined) eligible.push({ article, score })
   }
@@ -112,7 +183,7 @@ export function suggestMoves(params: {
   const byVolumeAsc = [...byVolumeDesc].reverse()
 
   const emptyByScoreDesc = emptyLocations
-    .filter((plats) => scoreByPlats.has(plats))
+    .filter((plats) => scoreByPlats.has(plats) && !blocks.platser.has(plats))
     .sort((a, b) => scoreByPlats.get(b)! - scoreByPlats.get(a)! || a.localeCompare(b))
 
   const usedItems = new Set<string>()
@@ -127,8 +198,9 @@ export function suggestMoves(params: {
     // still available that beats where the article sits now is the best one.
     let bestEmpty: string | null = null
     for (const plats of emptyByScoreDesc) {
-      if (usedPlats.has(plats)) continue
       if (scoreByPlats.get(plats)! <= high.score) break
+      if (usedPlats.has(plats)) continue
+      if (blocks.par.has(pairKey(high.article.itemId, plats))) continue
       bestEmpty = plats
       break
     }
@@ -140,6 +212,10 @@ export function suggestMoves(params: {
       if (low.article.volume >= high.article.volume) break
       if (usedItems.has(low.article.itemId) || usedPlats.has(low.article.plats)) continue
       if (low.score <= high.score) continue
+      // Both articles change places, so a block either way rules it out.
+      if (blocks.platser.has(low.article.plats) || blocks.platser.has(high.article.plats)) continue
+      if (blocks.par.has(pairKey(high.article.itemId, low.article.plats))) continue
+      if (blocks.par.has(pairKey(low.article.itemId, high.article.plats))) continue
       bestSwap = low
       break
     }

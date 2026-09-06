@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { locationScore, suggestMoves } from '../moves'
+import { DISMISSAL_SCOPES, locationScore, pairKey, suggestMoves, type MoveBlocks } from '../moves'
 
 describe('locationScore', () => {
   it('ranks a spot by its platsklass', () => {
@@ -138,5 +138,103 @@ describe('suggestMoves', () => {
     })
     expect(suggestions).toHaveLength(1)
     expect(suggestions[0].itemId).toBe('R1')
+  })
+})
+
+describe('dismissal scopes', () => {
+  it('blocks a whole location only for reasons about the location itself', () => {
+    expect(DISMISSAL_SCOPES.plats_saknas).toBe('plats')
+    expect(DISMISSAL_SCOPES.plats_blockerad).toBe('plats')
+  })
+
+  it('blocks a whole article only when the article is being phased out', () => {
+    expect(DISMISSAL_SCOPES.vara_utgar).toBe('vara')
+  })
+
+  it('keeps everything else to the one combination it was said about', () => {
+    expect(DISMISSAL_SCOPES.kartong_for_stor).toBe('pair')
+    expect(DISMISSAL_SCOPES.fel_plockmetod).toBe('pair')
+    expect(DISMISSAL_SCOPES.kraver_temperatur).toBe('pair')
+    expect(DISMISSAL_SCOPES.annat).toBe('pair')
+  })
+})
+
+describe('suggestMoves — dismissals', () => {
+  const scores = new Map([
+    ['GOOD', 3],
+    ['OK', 2],
+    ['BAD', 1],
+  ])
+
+  function blocks(overrides: Partial<MoveBlocks> = {}): MoveBlocks {
+    return { platser: new Set(), varor: new Set(), par: new Set(), ...overrides }
+  }
+
+  const placed = [
+    { itemId: 'RUNNER', plats: 'BAD', volume: 500 },
+    { itemId: 'SLEEPER', plats: 'GOOD', volume: 10 },
+  ]
+
+  it('stops proposing a location that does not exist, for anybody', () => {
+    const suggestions = suggestMoves({
+      placed,
+      emptyLocations: [],
+      scoreByPlats: scores,
+      limit: 10,
+      blocks: blocks({ platser: new Set(['GOOD']) }),
+    })
+    expect(suggestions).toEqual([])
+  })
+
+  it('stops moving an article that is being phased out', () => {
+    const suggestions = suggestMoves({
+      placed,
+      emptyLocations: [],
+      scoreByPlats: scores,
+      limit: 10,
+      blocks: blocks({ varor: new Set(['RUNNER']) }),
+    })
+    expect(suggestions).toEqual([])
+  })
+
+  it('a box that will not fit one slot says nothing about another', () => {
+    const suggestions = suggestMoves({
+      placed: [
+        { itemId: 'RUNNER', plats: 'BAD', volume: 500 },
+        { itemId: 'SLEEPER', plats: 'GOOD', volume: 10 },
+      ],
+      emptyLocations: ['OK'],
+      scoreByPlats: scores,
+      limit: 10,
+      blocks: blocks({ par: new Set([pairKey('RUNNER', 'GOOD')]) }),
+    })
+    // GOOD is out for this article, but the empty OK spot is still an upgrade.
+    expect(suggestions).toEqual([
+      { kind: 'move', itemId: 'RUNNER', fromPlats: 'BAD', toPlats: 'OK', gain: 500 },
+    ])
+  })
+
+  it('rules out a swap when the article coming the other way cannot take the spot', () => {
+    const suggestions = suggestMoves({
+      placed,
+      emptyLocations: [],
+      scoreByPlats: scores,
+      limit: 10,
+      blocks: blocks({ par: new Set([pairKey('SLEEPER', 'BAD')]) }),
+    })
+    expect(suggestions).toEqual([])
+  })
+
+  it('leaves a blocked location usable as a source, so articles can still get off it', () => {
+    const suggestions = suggestMoves({
+      placed: [{ itemId: 'RUNNER', plats: 'BAD', volume: 500 }],
+      emptyLocations: ['GOOD'],
+      scoreByPlats: scores,
+      limit: 10,
+      blocks: blocks({ platser: new Set(['BAD']) }),
+    })
+    expect(suggestions).toEqual([
+      { kind: 'move', itemId: 'RUNNER', fromPlats: 'BAD', toPlats: 'GOOD', gain: 1000 },
+    ])
   })
 })

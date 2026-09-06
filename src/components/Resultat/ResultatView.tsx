@@ -57,14 +57,28 @@ function formatPeriodLabel(period: string): string {
 }
 
 export function ResultatView() {
-  const { configData, rulesData, prefixRulesData, locationsData, placementsData, stationTypesData } =
-    useAppData()
+  const {
+    configData,
+    rulesData,
+    prefixRulesData,
+    locationsData,
+    placementsData,
+    stationTypesData,
+    dismissalsData,
+  } = useAppData()
   const { config, loading: configLoading } = configData
   const { rules, loading: rulesLoading } = rulesData
   const { prefixRules, loading: prefixRulesLoading } = prefixRulesData
   const { locations, loading: locationsLoading } = locationsData
   const { placements, loading: placementsLoading, reload: reloadPlacements } = placementsData
   const { stationTypes, loading: stationTypesLoading } = stationTypesData
+  const {
+    dismissals,
+    blocks: moveBlocks,
+    loading: dismissalsLoading,
+    dismiss,
+    undismiss,
+  } = dismissalsData
   const {
     rows: historyRows,
     loading: historyLoading,
@@ -111,6 +125,7 @@ export function ResultatView() {
     locationsLoading ||
     placementsLoading ||
     stationTypesLoading ||
+    dismissalsLoading ||
     historyLoading
 
   const manualMap = useMemo(() => {
@@ -233,8 +248,9 @@ export function ResultatView() {
       emptyLocations: locations.map((l) => l.plats).filter((plats) => !occupied.has(plats)),
       scoreByPlats,
       limit: moveLimit,
+      blocks: moveBlocks,
     })
-  }, [allRows, locations, scoreByPlats, moveLimit])
+  }, [allRows, locations, scoreByPlats, moveLimit, moveBlocks])
 
   const periodSummaries: PeriodSummary[] = useMemo(() => {
     const counts = new Map<string, number>()
@@ -289,6 +305,9 @@ export function ResultatView() {
             limit={moveLimit}
             onLimitChange={setMoveLimit}
             stationsWithoutType={stationsWithoutType}
+            dismissals={dismissals}
+            onDismiss={dismiss}
+            onUndismiss={undismiss}
           />
 
           <SummaryPanel rows={allRows} activeKlassFilter={klassFilter} onSelectKlassCell={handleSelectKlassCell} />
