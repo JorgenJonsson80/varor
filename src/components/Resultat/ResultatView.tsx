@@ -20,6 +20,9 @@ import { ManagePeriods, type PeriodSummary } from './ManagePeriods'
 import { MoveSuggestions, type OptimizeScope } from './MoveSuggestions'
 import { LoadSummary } from './LoadSummary'
 import { buildLoadSummary } from '../../lib/load'
+import { ImportStationLines } from './ImportStationLines'
+import { useStationDailyLines } from '../../hooks/useStationDailyLines'
+import { summarizeStationLoad } from '../../lib/stationlines'
 import { locationScore, suggestMoves } from '../../lib/moves'
 import { determinePlatsklass } from '../../lib/location'
 import './Resultat.css'
@@ -89,6 +92,11 @@ export function ResultatView() {
     reload,
     deletePeriod,
   } = useItemHistory()
+  const {
+    rows: stationDayRows,
+    loading: stationLinesLoading,
+    importRows: importStationLines,
+  } = useStationDailyLines()
 
   const [viewSelection, setViewSelection] = useState<'latest' | 'average' | string>('latest')
   const [stationFilter, setStationFilter] = useState<string | null>(null)
@@ -129,6 +137,7 @@ export function ResultatView() {
     placementsLoading ||
     stationTypesLoading ||
     dismissalsLoading ||
+    stationLinesLoading ||
     historyLoading
 
   const manualMap = useMemo(() => {
@@ -298,6 +307,20 @@ export function ResultatView() {
     [placedArticles, stationStart, stationEnd, moveSuggestions],
   )
 
+  // Real lines per day, rolled up the same way the derived load is, so the
+  // two sit side by side in the panel.
+  const actualLoad = useMemo(() => {
+    const perStation = summarizeStationLoad(stationDayRows)
+    const byStation = new Map(perStation.map((s) => [s.station, s.perDay]))
+    const byLine = new Map<string, number>()
+    for (const entry of perStation) {
+      const group = stationLines.get(entry.station) ?? `Utan line (stn ${entry.station})`
+      byLine.set(group, (byLine.get(group) ?? 0) + entry.perDay)
+    }
+    const days = new Set(stationDayRows.map((r) => r.datum)).size
+    return { byStation, byLine, days }
+  }, [stationDayRows, stationLines])
+
   const periodSummaries: PeriodSummary[] = useMemo(() => {
     const counts = new Map<string, number>()
     for (const row of historyRows) counts.set(row.period, (counts.get(row.period) ?? 0) + 1)
@@ -337,6 +360,8 @@ export function ResultatView() {
         <p className="hint">Ingen plockstatistik importerad ännu — börja med importen ovan.</p>
       ) : (
         <>
+          <ImportStationLines onImport={importStationLines} />
+
           <ManagePeriods
             periods={periodSummaries}
             formatPeriod={formatPeriodLabel}
@@ -346,7 +371,14 @@ export function ResultatView() {
             }}
           />
 
-          <LoadSummary byLine={loadByLine} byStation={loadByStation} periodLabel={volumeColumnLabel} />
+          <LoadSummary
+            byLine={loadByLine}
+            byStation={loadByStation}
+            periodLabel={volumeColumnLabel}
+            actualByLine={actualLoad.byLine}
+            actualByStation={actualLoad.byStation}
+            actualDays={actualLoad.days}
+          />
 
           <MoveSuggestions
             suggestions={moveSuggestions}

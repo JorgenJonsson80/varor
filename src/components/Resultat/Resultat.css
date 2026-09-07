@@ -10,7 +10,8 @@
 .import-plockstatistik,
 .manage-periods,
 .move-suggestions,
-.load-summary {
+.load-summary,
+.import-station-lines {
   border: 1px solid var(--border, #e5e4e7);
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
@@ -19,7 +20,8 @@
 .import-plockstatistik summary,
 .manage-periods summary,
 .move-suggestions summary,
-.load-summary summary {
+.load-summary summary,
+.import-station-lines summary {
   cursor: pointer;
   font-weight: 600;
 }
